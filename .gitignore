@@ -4,7 +4,7 @@
 *.dll
 *.so
 *.dylib
-msh
+/msh
 
 # Test binary, built with `go test -c`
 *.test
@@ -38,3 +38,5 @@ bin/
 check.md
 
 ROADMAP.md
+
+.agents/

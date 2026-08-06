@@ -10,10 +10,13 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os/exec"
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/aymanbagabas/go-pty"
 
 	"github.com/msh-protocol/msh/pkg/fs"
 	"github.com/msh-protocol/msh/pkg/protocol"
@@ -83,23 +86,66 @@ func (e *Executor) Execute(req protocol.ExecRequest) protocol.ExecResponse {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	var cmd *exec.Cmd
-	if runtime.GOOS == "windows" {
-		cmd = exec.CommandContext(ctx, "cmd", "/C", req.Command)
-	} else {
-		cmd = exec.CommandContext(ctx, "sh", "-c", req.Command)
-	}
-
-	cmd.Dir = cwd
-	cmd.Env = env
-
 	// Capture stdout and stderr
 	var stdoutBuf, stderrBuf bytes.Buffer
-	cmd.Stdout = &stdoutBuf
-	cmd.Stderr = &stderrBuf
 
-	// Execute the command
-	err := cmd.Run()
+	var err error
+	if req.UsePty {
+		var ptmx pty.Pty
+		ptmx, err = pty.New()
+		if err == nil {
+			defer ptmx.Close()
+			
+			var ptyCmd *pty.Cmd
+			if runtime.GOOS == "windows" {
+				cmdPath, _ := exec.LookPath("cmd.exe")
+				if cmdPath == "" {
+					cmdPath = "cmd.exe"
+				}
+				ptyCmd = ptmx.CommandContext(ctx, cmdPath, "/C", req.Command)
+			} else {
+				shPath, _ := exec.LookPath("sh")
+				if shPath == "" {
+					shPath = "/bin/sh"
+				}
+				ptyCmd = ptmx.CommandContext(ctx, shPath, "-c", req.Command)
+			}
+			ptyCmd.Dir = cwd
+			ptyCmd.Env = env
+			
+			err = ptyCmd.Start()
+			if err == nil {
+				// For PTY, stdout and stderr are merged into the PTY stream.
+				// Read the output in the background.
+				done := make(chan struct{})
+				go func() {
+					_, _ = io.Copy(&stdoutBuf, ptmx)
+					close(done)
+				}()
+				
+				// Wait for the command to finish
+				err = ptyCmd.Wait()
+				
+				// Small delay to allow io.Copy to finish reading the remaining buffer
+				select {
+				case <-done:
+				case <-time.After(100 * time.Millisecond):
+				}
+			}
+		}
+	} else {
+		var cmd *exec.Cmd
+		if runtime.GOOS == "windows" {
+			cmd = exec.CommandContext(ctx, "cmd.exe", "/C", req.Command)
+		} else {
+			cmd = exec.CommandContext(ctx, "sh", "-c", req.Command)
+		}
+		cmd.Dir = cwd
+		cmd.Env = env
+		cmd.Stdout = &stdoutBuf
+		cmd.Stderr = &stderrBuf
+		err = cmd.Run()
+	}
 
 	duration := time.Since(startTime)
 
