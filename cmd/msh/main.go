@@ -68,7 +68,9 @@ and returned as a structured JSON payload.`,
 		},
 	}
 
-	rootCmd.AddCommand(execCmd, versionCmd)
+	rootCmd.AddCommand(execCmd)
+	rootCmd.AddCommand(mcpCmd)
+	rootCmd.AddCommand(versionCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)

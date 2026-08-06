@@ -6,3 +6,7 @@ When building new features, you MUST follow this exact workflow:
 2. **Documentation**: After building the feature, you MUST update the `docs/` folder to reflect the changes.
 3. **Changelog**: Add an entry to the `[Unreleased]` section of `CHANGELOG.md`.
 4. **Readme**: Update `README.md` to highlight the new feature or update any affected examples.
+
+## Git Operations
+- **NEVER** run `git add`, `git commit`, or `git push` yourself. Always leave these commands for the user to run in their own terminal. You may only run `git checkout` to switch or create branches.
+

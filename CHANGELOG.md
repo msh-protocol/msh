@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **MCP Server** — Introduced `msh mcp` subcommand which starts a Model Context Protocol (MCP) server over standard I/O. This allows agents like Claude Desktop and Cursor to natively load the `execute_command` tool without custom integration code.
+
 ## [0.3.0] - 2026-08-06
 
 ### Added
@@ -39,6 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Zero external runtime dependencies (single static binary)
 - 19 unit tests across protocol and sanitize packages
 - Execution latency overhead: ~30ms per command
+
 
 [Unreleased]: https://github.com/msh-protocol/msh/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/msh-protocol/msh/releases/tag/v0.1.0

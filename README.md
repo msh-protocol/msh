@@ -15,6 +15,7 @@ When an AI agent runs `npm run build`, it usually receives a raw stream of ANSI 
 - **Detects Prompts** — Kills the process and returns `"status": "blocked"` if a `[y/N]` or password prompt appears.
 - **True Terminal Emulation** — Supports executing commands inside a Pseudo-Terminal (PTY) via `use_pty: true` for tools that demand a TTY.
 - **Network Daemon** — Run `msh serve` to expose an HTTP REST API, allowing remote agents to manage stateful execution sessions over the network.
+- **MCP Server** — Run `msh mcp` to natively expose the runtime to any Model Context Protocol compatible AI IDE (like Claude Desktop or Cursor).
 - **Filesystem Diffing** — Returns exactly which files were added, modified, or deleted during the command.
 
 `msh` solves the execution layer so agent builders can focus entirely on the intelligence layer.
@@ -77,6 +78,26 @@ curl -X POST http://127.0.0.1:8080/execute \
   -d '{"command": "ls", "session_id": "agent-123"}'
 ```
 Returns: `{"session_id":"agent-123", "cwd":"/project/src", "stdout":"main.go...", ...}`
+
+### 3. MCP Server (Native Integration)
+
+Start the server using Standard I/O (this is how you configure Claude Desktop or Cursor to use it):
+```bash
+msh mcp
+```
+
+Example `claude_desktop_config.json`:
+```json
+{
+  "mcpServers": {
+    "msh": {
+      "command": "msh",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+*Claude will now instantly have access to a deterministic `execute_command` tool!*
 
 ### Request Fields
 
