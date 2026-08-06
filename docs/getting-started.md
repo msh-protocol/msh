@@ -90,6 +90,36 @@ msh exec "echo fast" --no-files
 
 Skips the pre/post filesystem snapshot, making execution faster for commands that don't modify files.
 
+## Running as an HTTP Daemon
+
+You can run `msh` as a background server to accept execution requests over the network. This is ideal for distributed agent architectures.
+
+```bash
+msh serve --port 8080
+```
+
+### POST `/execute`
+
+Send a JSON `ExecRequest` to execute commands. If you provide a `session_id`, `msh` will persist state (like your working directory) across multiple requests.
+
+```bash
+curl -X POST http://127.0.0.1:8080/execute \
+  -H "Content-Type: application/json" \
+  -d '{
+    "command": "npm run build",
+    "session_id": "my-agent-session",
+    "timeout": "60s"
+  }'
+```
+
+### GET `/health`
+
+Check if the daemon is running.
+
+```bash
+curl http://127.0.0.1:8080/health
+```
+
 ## CLI Reference
 
 ```
@@ -101,6 +131,12 @@ Flags:
   --max-lines int     Maximum output lines (default 200)
   --pretty            Pretty-print JSON output
   --no-files          Skip filesystem change detection
+
+msh serve [flags]
+
+Flags:
+  --port int          Port to listen on (default 8080)
+  --host string       Host IP to bind to (default 127.0.0.1)
 
 msh version           Print version information
 ```

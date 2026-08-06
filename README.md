@@ -6,12 +6,15 @@
 
 ## Why msh?
 
-Standard shells (`bash`, `zsh`) were designed for human eyes in 1989. When AI agents execute commands via traditional subprocesses, they encounter:
+When an AI agent runs `npm run build`, it usually receives a raw stream of ANSI escape codes, progress bars, and unstructured text. If the command asks a `[y/N]` question, the agent hangs forever.
 
-- **Terminal Locks:** Interactive prompts (`[y/N]`) hang the execution loop indefinitely.
-- **Context Pollution:** Raw ANSI escape codes (`\033[0;31m`) waste token context.
-- **Token Blowouts:** Massive error dumps exhaust model context windows.
-- **State Loss:** Sequential commands lose relative directory and environment context.
+`msh` acts as a protective runtime between the agent and the OS:
+- **Returns Structured JSON** — Everything is an `ExecResponse`.
+- **Sanitizes Output** — Strips all ANSI codes and progress bars.
+- **Prevents Context Blowouts** — Automatically truncates massive error dumps (keeps first 100 + last 100 lines).
+- **Detects Prompts** — Kills the process and returns `"status": "blocked"` if a `[y/N]` or password prompt appears.
+- **Network Daemon** — Run `msh serve` to expose an HTTP REST API, allowing remote agents to manage stateful execution sessions over the network.
+- **Filesystem Diffing** — Returns exactly which files were added, modified, or deleted during the command.
 
 `msh` solves the execution layer so agent builders can focus entirely on the intelligence layer.
 
@@ -50,6 +53,29 @@ Every execution in `msh` yields a machine-readable payload:
   "duration_ms": 420
 }
 ```
+
+#### 2. HTTP Daemon (Stateful Network Sessions)
+
+Start the server:
+```bash
+msh serve --port 8080
+```
+
+Agents can now submit JSON requests over HTTP. By passing a `session_id`, `msh` remembers the working directory across multiple REST requests!
+
+**Request 1 (Create Session & Change Directory):**
+```bash
+curl -X POST http://127.0.0.1:8080/execute \
+  -d '{"command": "cd src", "session_id": "agent-123"}'
+```
+Returns: `{"session_id":"agent-123", "cwd":"/project/src", ...}`
+
+**Request 2 (Execute in that Directory):**
+```bash
+curl -X POST http://127.0.0.1:8080/execute \
+  -d '{"command": "ls", "session_id": "agent-123"}'
+```
+Returns: `{"session_id":"agent-123", "cwd":"/project/src", "stdout":"main.go...", ...}`
 
 ### Response Fields
 

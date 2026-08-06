@@ -83,7 +83,7 @@ func TakeSnapshot(root string, ignorePatterns []string) (*Snapshot, error) {
 		relPath = filepath.ToSlash(relPath)
 
 		// Check ignore patterns
-		if shouldIgnore(relPath, info.IsDir(), ignorePatterns) {
+		if shouldIgnore(relPath, ignorePatterns) {
 			if info.IsDir() {
 				return filepath.SkipDir
 			}
@@ -151,7 +151,7 @@ func DiffSnapshots(before, after *Snapshot) []FileChange {
 }
 
 // shouldIgnore checks if a path should be excluded from snapshots.
-func shouldIgnore(relPath string, isDir bool, patterns []string) bool {
+func shouldIgnore(relPath string, patterns []string) bool {
 	// Get the base name for pattern matching
 	base := filepath.Base(relPath)
 
