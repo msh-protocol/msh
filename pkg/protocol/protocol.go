@@ -32,6 +32,10 @@ const (
 // ExecRequest defines the input contract for executing a command through msh.
 // AI agents construct this payload to request command execution.
 type ExecRequest struct {
+	// SessionID allows the client to persist state across multiple executions.
+	// If empty, the execution runs in a new, ephemeral session.
+	SessionID string `json:"session_id,omitempty"`
+
 	// Command is the shell command string to execute.
 	// Example: "npm run build", "ls -la", "go test ./..."
 	Command string `json:"command"`
@@ -64,6 +68,10 @@ type ExecRequest struct {
 // after executing a command. This replaces raw, ANSI-polluted terminal
 // streams with clean, machine-readable data.
 type ExecResponse struct {
+	// SessionID is the identifier of the session used for this execution.
+	// Clients should pass this ID in subsequent requests to maintain state.
+	SessionID string `json:"session_id"`
+
 	// Status indicates the execution outcome.
 	// One of: "success", "error", "timeout", "blocked".
 	Status Status `json:"status"`
