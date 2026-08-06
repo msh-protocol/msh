@@ -58,10 +58,14 @@ type ExecRequest struct {
 	// in ExecResponse is set to true. Zero means use the default (200).
 	MaxOutputLines int `json:"max_output_lines,omitempty"`
 
-	// DetectFiles enables filesystem change detection for this command.
-	// When true, msh snapshots the workspace before and after execution
-	// to populate the FilesChanged field in the response.
+	// DetectFiles enables filesystem change detection.
+	// When true, msh takes pre and post execution snapshots to return FilesChanged.
 	DetectFiles bool `json:"detect_files,omitempty"`
+
+	// UsePty runs the command inside a pseudo-terminal (PTY) instead of standard pipes.
+	// This is required for commands that demand a TTY (like interactive tools or SSH).
+	// NOTE: When true, Stderr will be merged into Stdout.
+	UsePty bool `json:"use_pty,omitempty"`
 }
 
 // ExecResponse defines the structured output contract returned by msh
