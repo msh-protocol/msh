@@ -13,6 +13,7 @@ When an AI agent runs `npm run build`, it usually receives a raw stream of ANSI 
 - **Sanitizes Output** — Strips all ANSI codes and progress bars.
 - **Prevents Context Blowouts** — Automatically truncates massive error dumps (keeps first 100 + last 100 lines).
 - **Detects Prompts** — Kills the process and returns `"status": "blocked"` if a `[y/N]` or password prompt appears.
+- **True Terminal Emulation** — Supports executing commands inside a Pseudo-Terminal (PTY) via `use_pty: true` for tools that demand a TTY.
 - **Network Daemon** — Run `msh serve` to expose an HTTP REST API, allowing remote agents to manage stateful execution sessions over the network.
 - **Filesystem Diffing** — Returns exactly which files were added, modified, or deleted during the command.
 
@@ -76,6 +77,18 @@ curl -X POST http://127.0.0.1:8080/execute \
   -d '{"command": "ls", "session_id": "agent-123"}'
 ```
 Returns: `{"session_id":"agent-123", "cwd":"/project/src", "stdout":"main.go...", ...}`
+
+### Request Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `command` | `string` | Shell command to execute (required). |
+| `cwd` | `string` | The directory to execute the command in. Defaults to session directory. |
+| `env` | `object` | Key-value pairs of environment variables to inject. |
+| `timeout` | `string` | Maximum execution time before being killed (e.g., `30s`, `1m`). |
+| `max_output_lines` | `integer` | Truncates output if it exceeds this (saves tokens). |
+| `detect_files` | `boolean` | If true, returns exactly which files were modified. |
+| `use_pty` | `boolean` | If true, runs the command in a Pseudo-Terminal (merges stderr into stdout). |
 
 ### Response Fields
 
