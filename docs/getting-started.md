@@ -139,6 +139,8 @@ Flags:
   --port int          Port to listen on (default 8080)
   --host string       Host IP to bind to (default 127.0.0.1)
 
+msh mcp               Start an MCP (Model Context Protocol) server over stdio
+
 msh version           Print version information
 ```
 
