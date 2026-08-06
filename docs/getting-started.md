@@ -131,6 +131,7 @@ Flags:
   --max-lines int     Maximum output lines (default 200)
   --pretty            Pretty-print JSON output
   --no-files          Skip filesystem change detection
+  --pty               Run command in a pseudo-terminal (PTY)
 
 msh serve [flags]
 

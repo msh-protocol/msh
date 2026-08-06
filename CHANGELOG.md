@@ -5,7 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.0] - 2026-08-06
+
+### Added
+- **True Terminal Emulation (PTY)** — `msh` can now run commands inside a pseudo-terminal by passing `"use_pty": true` in the JSON payload (or `--pty` in the CLI). This allows AI agents to interact with complex CLI tools that refuse to run outside a TTY (like SSH or Docker). Note that in PTY mode, `stderr` is inherently merged into `stdout`.
 
 ## [0.2.0] - 2026-08-06
 
