@@ -5,7 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Released]
+## [Unreleased]
+
+## [0.2.0] - 2026-08-06
+
+### Added
+- **HTTP Daemon Mode** — `msh serve` starts an HTTP server (default port 8080) with a `POST /execute` endpoint.
+- **Stateful Network Sessions** — Added `SessionID` to `ExecRequest` and `ExecResponse`. Passing a `SessionID` over HTTP maintains the current working directory and environment variables across multiple REST requests.
+- **Thread-Safe Session Manager** — Added a concurrency-safe `SessionManager` that supports multi-tenant daemon execution and automatically reaps idle sessions after 30 minutes.
 
 ## [0.1.0] - 2026-08-06
 
