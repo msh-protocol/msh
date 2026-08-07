@@ -20,28 +20,40 @@ When an AI agent runs `npm run build`, it usually receives a raw stream of ANSI 
 
 `msh` solves the execution layer so agent builders can focus entirely on the intelligence layer.
 
-## Quick Start
+---
 
-```bash
-# Install
-go install github.com/msh-protocol/msh/cmd/msh@latest
+## Architecture
 
-# Execute a command with structured output
-msh exec "echo hello world"
+At its core, `msh` intercepts everything that happens inside a subprocess.
 
-# Pretty-print the JSON response
-msh exec "ls -la" --pretty
-
-# Set a timeout
-msh exec "npm run build" --timeout 60s
-
-# Limit output lines (saves tokens)
-msh exec "cat huge_log.txt" --max-lines 100
+```mermaid
+flowchart LR
+    A[AI Agent / LLM] -->|ExecRequest JSON| B(msh Protocol)
+    B -->|Sanitize & Truncate| C{Subprocess}
+    C -->|Detect Prompts| B
+    B -->|ExecResponse JSON| A
 ```
 
-## The Structured Output Contract
+---
 
-Every execution in `msh` yields a machine-readable payload:
+## Getting Started
+
+### 1. CLI Usage (`msh exec`)
+
+Run any command and get a completely deterministic, heavily structured JSON payload back.
+```bash
+msh exec "npm run build" --max-lines 500
+```
+Returns: `{"session_id":"agent-123", "cwd":"/project/src", "stdout":"main.go...", ...}`
+
+### 2. CLI Wrapping (`msh wrap`)
+
+Need to use `msh` in an existing bash script or for a human developer where JSON is annoying? Use `wrap`.
+It runs exactly the same deterministic execution engine but prints the clean, truncated text directly to the terminal!
+```bash
+msh wrap "npm run build" --max-lines 500
+```
+*Outputs beautifully truncated text with ANSI color codes stripped out!*
 
 ```json
 {
@@ -79,7 +91,7 @@ curl -X POST http://127.0.0.1:8080/execute \
 ```
 Returns: `{"session_id":"agent-123", "cwd":"/project/src", "stdout":"main.go...", ...}`
 
-### 3. MCP Server (Native Integration)
+### 4. MCP Server (Native Integration)
 
 Start the server using Standard I/O (this is how you configure Claude Desktop or Cursor to use it):
 ```bash

@@ -40,3 +40,5 @@ check.md
 ROADMAP.md
 
 .agents/
+
+test_pty.py
