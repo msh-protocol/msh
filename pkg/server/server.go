@@ -40,7 +40,13 @@ func (s *Server) Start() error {
 	// Start a background goroutine to clean up idle sessions
 	go s.cleanupLoop()
 
-	return http.ListenAndServe(addr, mux)
+	return (&http.Server{
+		Addr:         addr,
+		Handler:      mux,
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 5 * time.Minute, // commands can run up to default 30s + overhead
+		IdleTimeout:  60 * time.Second,
+	}).ListenAndServe()
 }
 
 func (s *Server) cleanupLoop() {

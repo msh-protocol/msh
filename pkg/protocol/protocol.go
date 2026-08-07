@@ -150,4 +150,4 @@ const DefaultMaxOutputLines = 200
 const DefaultTimeout = 30 * time.Second
 
 // Version is the current version of the msh protocol.
-const Version = "0.1.0"
+const Version = "0.5.0"

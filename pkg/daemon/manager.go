@@ -73,6 +73,8 @@ func (m *Manager) Start(commandStr, cwd string, env map[string]string) (*DaemonS
 		logFile.Close()
 		return nil, err
 	}
+	// Close our handle — the child process has inherited the fd.
+	logFile.Close()
 
 	state := &DaemonState{
 		ID:        id,
