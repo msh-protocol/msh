@@ -82,9 +82,12 @@ function App() {
     <>
       <header className="header">
         <div className="header-brand">
-          <div className="brand-logo">m</div>
-          <div className="brand-text">msh-fleet</div>
-          <div className="brand-badge">Enterprise</div>
+          <div className="brand-logo">
+            <svg viewBox="0 0 76 65" fill="none" xmlns="http://www.w3.org/20event.w3.org/2000/svg" width="22" height="20">
+              <path d="M37.5274 0L75.0548 65H0L37.5274 0Z" fill="#ffffff" />
+            </svg>
+          </div>
+          <div className="brand-text">msh / fleet</div>
         </div>
       </header>
 
@@ -93,9 +96,8 @@ function App() {
         
         {nodes.length === 0 ? (
           <div className="empty-state">
-            <div className="empty-icon">🌐</div>
             <h2 className="empty-title">No Agents Connected</h2>
-            <p>Run `msh serve --fleet ws://...` on your agents to connect them to the fleet.</p>
+            <p className="empty-desc">Run `msh serve --fleet ws://127.0.0.1:9000 --token &lt;token&gt;` on your agents to connect.</p>
           </div>
         ) : (
           <div className="nodes-grid">
@@ -114,11 +116,11 @@ function App() {
                 
                 <div className="node-meta">
                   <div className="meta-item">
-                    <span className="meta-icon">💻</span>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
                     {node.os} ({node.arch})
                   </div>
                   <div className="meta-item">
-                    <span className="meta-icon">⏱️</span>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
                     Active Session
                   </div>
                 </div>
@@ -161,7 +163,6 @@ function App() {
                   {log}
                 </div>
               ))}
-              <div className="terminal-cursor"></div>
             </div>
           </div>
         </div>
