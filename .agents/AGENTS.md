@@ -13,4 +13,9 @@ When building new features, you MUST follow this exact workflow:
 - **HOWEVER**, you MUST explicitly notify the user and tell them when it is time to run these commands (e.g., at the end of a feature or phase) so they can commit and push the changes.
 
 
+## Command Execution Rule
+Whenever you need to run a terminal command, you MUST prepend `msh wrap` to it. 
+For example, instead of running `npm run build`, you must run `msh wrap "npm run build" --max-lines 500`.
+
+
 

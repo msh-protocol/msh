@@ -1,0 +1,8 @@
+hooks:
+  pre_exec:
+    - name: "Security Check"
+      command: "echo 'Scanning command: {{command}}' && exit 0"
+      block_on_fail: true
+  post_exec:
+    - name: "Audit Log"
+      command: "echo 'Logged: {{command}}'"
