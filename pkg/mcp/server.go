@@ -28,7 +28,7 @@ func (s *MshServer) StartStdio() error {
 	// Create MCP server
 	srv := server.NewMCPServer(
 		"msh",
-		"0.3.0",
+		protocol.Version,
 		server.WithToolCapabilities(true),
 	)
 

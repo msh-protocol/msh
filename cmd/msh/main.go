@@ -25,6 +25,7 @@ var (
 	flagPretty   bool
 	flagNoFiles  bool
 	flagPty      bool
+	flagEnvFile  string
 )
 
 var rootCmd = &cobra.Command{
@@ -57,6 +58,7 @@ and returned as a structured JSON payload.`,
 	execCmd.Flags().BoolVar(&flagPretty, "pretty", false, "Pretty-print JSON output")
 	execCmd.Flags().BoolVar(&flagNoFiles, "no-files", false, "Skip filesystem change detection")
 	execCmd.Flags().BoolVar(&flagPty, "pty", false, "Run command in a pseudo-terminal (PTY)")
+	execCmd.Flags().StringVar(&flagEnvFile, "env-file", "", "Path to a .env file to load before execution")
 
 	// --- version command ---
 	versionCmd := &cobra.Command{
@@ -71,6 +73,7 @@ and returned as a structured JSON payload.`,
 	rootCmd.AddCommand(execCmd)
 	rootCmd.AddCommand(mcpCmd)
 	rootCmd.AddCommand(wrapCmd)
+	rootCmd.AddCommand(daemonCmd)
 	rootCmd.AddCommand(versionCmd)
 
 	if err := rootCmd.Execute(); err != nil {
@@ -101,6 +104,7 @@ func runExec(cmd *cobra.Command, args []string) error {
 		MaxOutputLines: flagMaxLines,
 		DetectFiles:    !flagNoFiles,
 		UsePty:         flagPty,
+		EnvFile:        flagEnvFile,
 	}
 
 	// Execute

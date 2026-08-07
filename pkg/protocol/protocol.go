@@ -48,6 +48,10 @@ type ExecRequest struct {
 	// These are merged with (and override) the session's environment.
 	Env map[string]string `json:"env,omitempty"`
 
+	// EnvFile specifies a path to a .env file to load before execution.
+	// Variables from this file are merged into Env.
+	EnvFile string `json:"env_file,omitempty"`
+
 	// Timeout sets the maximum execution duration for this command.
 	// If the command exceeds this duration, it is killed and the response
 	// status is set to "timeout". Zero means use the default (30s).
@@ -104,7 +108,7 @@ type ExecResponse struct {
 	// Only populated when DetectFiles is true in the request.
 	FilesChanged []string `json:"files_changed,omitempty"`
 
-	// Hooks records the output of any pre/post execution hooks.
+	// Hooks contains the execution results of any pre/post execution plugins.
 	Hooks []HookResult `json:"hooks,omitempty"`
 
 	// DurationMs is the wall-clock execution time in milliseconds.
@@ -149,7 +153,7 @@ const DefaultMaxOutputLines = 200
 const DefaultTimeout = 30 * time.Second
 
 // Version is the current version of the msh protocol.
-const Version = "0.1.0"
+const Version = "0.5.0"
 
 // HookResult records the outcome of a pre/post execution hook.
 type HookResult struct {

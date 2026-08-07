@@ -15,14 +15,16 @@ type Server struct {
 	sessionManager *execution.SessionManager
 	port           int
 	host           string
+	token          string
 }
 
 // NewServer initializes a new msh HTTP server.
-func NewServer(host string, port int, idleTimeout time.Duration) *Server {
+func NewServer(host string, port int, idleTimeout time.Duration, token string) *Server {
 	return &Server{
 		sessionManager: execution.NewSessionManager(idleTimeout),
 		port:           port,
 		host:           host,
+		token:          token,
 	}
 }
 
@@ -38,7 +40,13 @@ func (s *Server) Start() error {
 	// Start a background goroutine to clean up idle sessions
 	go s.cleanupLoop()
 
-	return http.ListenAndServe(addr, mux)
+	return (&http.Server{
+		Addr:         addr,
+		Handler:      mux,
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 5 * time.Minute, // commands can run up to default 30s + overhead
+		IdleTimeout:  60 * time.Second,
+	}).ListenAndServe()
 }
 
 func (s *Server) cleanupLoop() {
@@ -59,12 +67,20 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleExecute(w http.ResponseWriter, r *http.Request) {
+	if s.token != "" {
+		authHeader := r.Header.Get("Authorization")
+		if authHeader != "Bearer "+s.token {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+	}
+
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	body, err := io.ReadAll(r.Body)
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20)) // 1MB limit
 	if err != nil {
 		http.Error(w, "Failed to read request body", http.StatusBadRequest)
 		return

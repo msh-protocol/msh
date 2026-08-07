@@ -12,11 +12,13 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
 
 	"github.com/aymanbagabas/go-pty"
+	"github.com/joho/godotenv"
 
 	"github.com/msh-protocol/msh/pkg/fs"
 	"github.com/msh-protocol/msh/pkg/hooks"
@@ -68,6 +70,26 @@ func (e *Executor) Execute(req protocol.ExecRequest) protocol.ExecResponse {
 		cwd = req.Cwd
 	}
 
+	// Load .env file if specified
+	if req.EnvFile != "" {
+		envPath := req.EnvFile
+		if !filepath.IsAbs(envPath) {
+			envPath = filepath.Join(cwd, envPath)
+		}
+		
+		if loadedEnv, err := godotenv.Read(envPath); err == nil {
+			if req.Env == nil {
+				req.Env = make(map[string]string)
+			}
+			// req.Env takes precedence over the .env file, so we only add keys that don't exist
+			for k, v := range loadedEnv {
+				if _, exists := req.Env[k]; !exists {
+					req.Env[k] = v
+				}
+			}
+		}
+	}
+
 	// Build environment
 	env := e.session.BuildEnv(req.Env)
 
@@ -91,12 +113,14 @@ func (e *Executor) Execute(req protocol.ExecRequest) protocol.ExecResponse {
 		}
 	}
 
-	// 2. Take pre-execution filesystem snapshot if file detection is enabled
-	var preSnapshot *fs.Snapshot
+	// 2. Start Hybrid Filesystem Watcher if file detection is enabled
+	var watcher *fs.Watcher
 	if req.DetectFiles {
-		snap, err := fs.TakeSnapshot(cwd, defaultIgnorePatterns())
+		w, err := fs.NewWatcher(cwd, defaultIgnorePatterns())
 		if err == nil {
-			preSnapshot = snap
+			if startErr := w.Start(); startErr == nil {
+				watcher = w
+			}
 		}
 	}
 
@@ -167,6 +191,11 @@ func (e *Executor) Execute(req protocol.ExecRequest) protocol.ExecResponse {
 		err = cmd.Run()
 	}
 
+	duration := time.Since(startTime)
+
+	// Populate the response (SessionID and Cwd were set earlier)
+	resp.DurationMs = duration.Milliseconds()
+
 	// Determine status and exit code
 	if ctx.Err() == context.DeadlineExceeded {
 		resp.Status = protocol.StatusTimeout
@@ -205,16 +234,9 @@ func (e *Executor) Execute(req protocol.ExecRequest) protocol.ExecResponse {
 		}
 	}
 
-	// Compute filesystem diff
-	if req.DetectFiles && preSnapshot != nil {
-		postSnapshot, err := fs.TakeSnapshot(cwd, defaultIgnorePatterns())
-		if err == nil {
-			changes := fs.DiffSnapshots(preSnapshot, postSnapshot)
-			resp.FilesChanged = make([]string, len(changes))
-			for i, c := range changes {
-				resp.FilesChanged[i] = c.Path
-			}
-		}
+	// Compute filesystem diff using the Watcher
+	if watcher != nil {
+		resp.FilesChanged = watcher.Stop()
 	}
 
 	// Update session state
@@ -223,13 +245,12 @@ func (e *Executor) Execute(req protocol.ExecRequest) protocol.ExecResponse {
 	}
 	resp.Cwd = e.session.Cwd
 
-	// 6. Run Post-Hooks
+	// Run Post-Hooks
 	if cfg != nil {
 		postResults := hooks.RunPostHooks(context.Background(), cfg, req.Command, cwd)
 		resp.Hooks = append(resp.Hooks, postResults...)
 	}
 
-	resp.DurationMs = time.Since(startTime).Milliseconds()
 	return resp
 }
 

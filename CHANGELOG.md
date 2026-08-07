@@ -7,10 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-07
+
+### Added
+- **Long-Running Daemons** — Introduced the `msh daemon` subcommand (`start`, `logs`, `kill`, `status`) to manage and stream logs from long-running background processes (like `npm run dev`) without blocking the execution loop.
+- **Native `.env` Injection** — Added the `env_file` field to `ExecRequest` and the `--env-file` CLI flag to natively parse and inject environment variables from `.env` files before command execution.
+
+## [0.4.0] - 2026-08-07
+
 ### Added
 - **Plugin / Hook System** — Added support for `.msh/hooks.yaml` to define pre/post execution scripts (e.g. security scanners, telemetry loggers). Hooks are executed natively and their outputs are attached to the `ExecResponse` payload.
 - **`msh wrap` Subcommand** — Introduced `msh wrap "command"` which executes a command through the deterministic runtime but prints the sanitized text directly to standard output/error instead of formatting it as JSON.
 - **MCP Server** — Introduced `msh mcp` subcommand which starts a Model Context Protocol (MCP) server over standard I/O. This allows agents like Claude Desktop and Cursor to natively load the `execute_command` tool without custom integration code.
+
+### Changed
+- **Performance: Hybrid Filesystem Watcher** — Replaced the slow before/after full directory hashing with an `fsnotify` real-time watcher. Command execution in massive monorepos is now instantaneous while still capturing exact `files_changed` events.
 
 ## [0.3.0] - 2026-08-06
 
