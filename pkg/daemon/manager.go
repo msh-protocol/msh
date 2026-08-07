@@ -132,8 +132,14 @@ func (m *Manager) Kill(id string) error {
 	if err != nil {
 		return err
 	}
-	if err := process.Kill(); err != nil {
-		return err
+	if runtime.GOOS == "windows" {
+		// On Windows, process.Kill() only kills the parent cmd.exe, leaving child Node/Go processes alive.
+		// We must use taskkill /T to kill the entire tree.
+		exec.Command("taskkill", "/T", "/F", "/PID", fmt.Sprintf("%d", state.Pid)).Run()
+	} else {
+		if err := process.Kill(); err != nil {
+			return err
+		}
 	}
 	state.Status = "killed"
 	m.saveState(state)
