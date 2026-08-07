@@ -19,6 +19,7 @@ import (
 	"github.com/aymanbagabas/go-pty"
 
 	"github.com/msh-protocol/msh/pkg/fs"
+	"github.com/msh-protocol/msh/pkg/hooks"
 	"github.com/msh-protocol/msh/pkg/protocol"
 	"github.com/msh-protocol/msh/pkg/sanitize"
 )
@@ -70,7 +71,27 @@ func (e *Executor) Execute(req protocol.ExecRequest) protocol.ExecResponse {
 	// Build environment
 	env := e.session.BuildEnv(req.Env)
 
-	// Take pre-execution filesystem snapshot if file detection is enabled
+	// Build the initial response object
+	resp := protocol.ExecResponse{
+		SessionID: e.session.ID,
+		Cwd:       cwd,
+	}
+
+	// 1. Load and Run Pre-Hooks
+	cfg, err := hooks.LoadConfig(cwd)
+	if err == nil && cfg != nil {
+		preResults, preErr := hooks.RunPreHooks(context.Background(), cfg, req.Command, cwd)
+		resp.Hooks = append(resp.Hooks, preResults...)
+		if preErr != nil {
+			resp.Status = protocol.StatusBlocked
+			resp.ExitCode = -1
+			resp.Error = preErr.Error()
+			resp.DurationMs = time.Since(startTime).Milliseconds()
+			return resp
+		}
+	}
+
+	// 2. Take pre-execution filesystem snapshot if file detection is enabled
 	var preSnapshot *fs.Snapshot
 	if req.DetectFiles {
 		snap, err := fs.TakeSnapshot(cwd, defaultIgnorePatterns())
@@ -89,7 +110,6 @@ func (e *Executor) Execute(req protocol.ExecRequest) protocol.ExecResponse {
 	// Capture stdout and stderr
 	var stdoutBuf, stderrBuf bytes.Buffer
 
-	var err error
 	if req.UsePty {
 		var ptmx pty.Pty
 		ptmx, err = pty.New()
@@ -145,14 +165,6 @@ func (e *Executor) Execute(req protocol.ExecRequest) protocol.ExecResponse {
 		cmd.Stdout = &stdoutBuf
 		cmd.Stderr = &stderrBuf
 		err = cmd.Run()
-	}
-
-	duration := time.Since(startTime)
-
-	// Build the response
-	resp := protocol.ExecResponse{
-		DurationMs: duration.Milliseconds(),
-		Cwd:        cwd,
 	}
 
 	// Determine status and exit code
@@ -211,6 +223,13 @@ func (e *Executor) Execute(req protocol.ExecRequest) protocol.ExecResponse {
 	}
 	resp.Cwd = e.session.Cwd
 
+	// 6. Run Post-Hooks
+	if cfg != nil {
+		postResults := hooks.RunPostHooks(context.Background(), cfg, req.Command, cwd)
+		resp.Hooks = append(resp.Hooks, postResults...)
+	}
+
+	resp.DurationMs = time.Since(startTime).Milliseconds()
 	return resp
 }
 
