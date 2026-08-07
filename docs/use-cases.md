@@ -44,6 +44,25 @@
 ## 5. Wrapping Legacy CLIs
 *Use Case: An agent needs to interface with a proprietary, highly interactive internal tool.*
 
-**The Problem:** Internal CLIs are notorious for requiring interactive inputs, throwing raw ANSI control sequences, and failing weirdly without a PTY.
+**The Problem:** Internal CLIs are notorious for throwing massive raw ANSI control sequences, failing weirdly without a PTY, or dumping 10,000 lines of logs that blow out the LLM's context window.
 
-**The msh Solution (Planned for v0.3):** Using `msh wrap legacy-tool`, the agent forces the legacy tool through the `msh` sanitization and structured JSON pipeline, taming it into a clean, REST-like interface that the LLM can easily consume.
+**The msh Solution:** Using `msh wrap "legacy-tool"`, you force the legacy tool through the `msh` sanitization pipeline. It automatically strips ANSI codes, truncates massive outputs, and kills the process if it hits an unexpected interactive prompt, outputting clean text directly to the terminal.
+
+## 6. Human-in-the-Loop & Shell Scripting
+*Use Case: You want to use the powerful sanitization engine of `msh` inside your existing bash scripts or CI/CD pipelines.*
+
+**The Problem:** Shell scripts often fail silently or produce unreadable CI logs when a command outputs colored text or hangs indefinitely waiting for user input (e.g., `npm install` asking for a survey).
+
+**The msh Solution:** Just prepend `msh wrap` to the dangerous commands in your bash script!
+```bash
+#!/bin/bash
+
+echo "Starting build..."
+
+# If this hangs on a prompt, msh will kill it and exit 1 instead of hanging CI
+msh wrap "npm run build" --max-lines 200
+
+# Capture clean, truncated text into a variable without breaking JSON parsers
+CLEAN_LOGS=$(msh wrap "cat huge_log.txt" --max-lines 50)
+echo $CLEAN_LOGS
+```
