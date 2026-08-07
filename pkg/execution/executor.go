@@ -21,6 +21,7 @@ import (
 	"github.com/joho/godotenv"
 
 	"github.com/msh-protocol/msh/pkg/fs"
+	"github.com/msh-protocol/msh/pkg/hooks"
 	"github.com/msh-protocol/msh/pkg/protocol"
 	"github.com/msh-protocol/msh/pkg/sanitize"
 )
@@ -92,6 +93,26 @@ func (e *Executor) Execute(req protocol.ExecRequest) protocol.ExecResponse {
 	// Build environment
 	env := e.session.BuildEnv(req.Env)
 
+	// Build the initial response object
+	resp := protocol.ExecResponse{
+		SessionID: e.session.ID,
+		Cwd:       cwd,
+	}
+
+	// 1. Load and Run Pre-Hooks
+	cfg, err := hooks.LoadConfig(cwd)
+	if err == nil && cfg != nil {
+		preResults, preErr := hooks.RunPreHooks(context.Background(), cfg, req.Command, cwd)
+		resp.Hooks = append(resp.Hooks, preResults...)
+		if preErr != nil {
+			resp.Status = protocol.StatusBlocked
+			resp.ExitCode = -1
+			resp.Error = preErr.Error()
+			resp.DurationMs = time.Since(startTime).Milliseconds()
+			return resp
+		}
+	}
+
 	// 2. Start Hybrid Filesystem Watcher if file detection is enabled
 	var watcher *fs.Watcher
 	if req.DetectFiles {
@@ -113,7 +134,6 @@ func (e *Executor) Execute(req protocol.ExecRequest) protocol.ExecResponse {
 	// Capture stdout and stderr
 	var stdoutBuf, stderrBuf bytes.Buffer
 
-	var err error
 	if req.UsePty {
 		var ptmx pty.Pty
 		ptmx, err = pty.New()
@@ -173,11 +193,8 @@ func (e *Executor) Execute(req protocol.ExecRequest) protocol.ExecResponse {
 
 	duration := time.Since(startTime)
 
-	// Build the response
-	resp := protocol.ExecResponse{
-		DurationMs: duration.Milliseconds(),
-		Cwd:        cwd,
-	}
+	// Populate the response (SessionID and Cwd were set earlier)
+	resp.DurationMs = duration.Milliseconds()
 
 	// Determine status and exit code
 	if ctx.Err() == context.DeadlineExceeded {
@@ -227,6 +244,12 @@ func (e *Executor) Execute(req protocol.ExecRequest) protocol.ExecResponse {
 		e.session.UpdateCwd(cdTarget, cwd)
 	}
 	resp.Cwd = e.session.Cwd
+
+	// Run Post-Hooks
+	if cfg != nil {
+		postResults := hooks.RunPostHooks(context.Background(), cfg, req.Command, cwd)
+		resp.Hooks = append(resp.Hooks, postResults...)
+	}
 
 	return resp
 }

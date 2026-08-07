@@ -108,6 +108,9 @@ type ExecResponse struct {
 	// Only populated when DetectFiles is true in the request.
 	FilesChanged []string `json:"files_changed,omitempty"`
 
+	// Hooks contains the execution results of any pre/post execution plugins.
+	Hooks []HookResult `json:"hooks,omitempty"`
+
 	// DurationMs is the wall-clock execution time in milliseconds.
 	DurationMs int64 `json:"duration_ms"`
 
@@ -151,3 +154,13 @@ const DefaultTimeout = 30 * time.Second
 
 // Version is the current version of the msh protocol.
 const Version = "0.5.0"
+
+// HookResult records the outcome of a pre/post execution hook.
+type HookResult struct {
+	Name     string `json:"name"`
+	Type     string `json:"type"` // pre_exec, post_exec
+	Command  string `json:"command"`
+	Stdout   string `json:"stdout,omitempty"`
+	Stderr   string `json:"stderr,omitempty"`
+	ExitCode int    `json:"exit_code"`
+}
