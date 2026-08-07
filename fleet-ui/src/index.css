@@ -1,11 +1,11 @@
 :root {
-  --bg-color: #0b0f19;
-  --panel-bg: rgba(20, 27, 45, 0.6);
-  --border-color: rgba(255, 255, 255, 0.08);
-  --text-primary: #f8fafc;
-  --text-secondary: #94a3b8;
-  --accent-color: #3b82f6;
-  --accent-glow: rgba(59, 130, 246, 0.5);
+  --bg-color: #000000;
+  --panel-bg: #111111;
+  --border-color: #333333;
+  --text-primary: #ededed;
+  --text-secondary: #888888;
+  --accent-color: #0070f3;
+  --accent-hover: #0051a2;
   --success-color: #10b981;
   --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 }
@@ -22,10 +22,6 @@ body {
   font-family: var(--font-family);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-image: 
-    radial-gradient(circle at 15% 50%, rgba(59, 130, 246, 0.08), transparent 25%),
-    radial-gradient(circle at 85% 30%, rgba(16, 185, 129, 0.05), transparent 25%);
-  background-attachment: fixed;
   min-height: 100vh;
 }
 
@@ -37,10 +33,9 @@ body {
 
 /* Header */
 .header {
-  padding: 1.5rem 3rem;
+  padding: 1.25rem 3rem;
   border-bottom: 1px solid var(--border-color);
-  background: rgba(11, 15, 25, 0.8);
-  backdrop-filter: blur(12px);
+  background: var(--bg-color);
   position: sticky;
   top: 0;
   z-index: 100;
@@ -58,14 +53,14 @@ body {
 .brand-logo {
   width: 32px;
   height: 32px;
-  background: linear-gradient(135deg, #3b82f6, #8b5cf6);
-  border-radius: 8px;
+  background: #222;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: 800;
   font-size: 1.2rem;
-  box-shadow: 0 0 15px var(--accent-glow);
 }
 
 .brand-text {
@@ -78,7 +73,8 @@ body {
   font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  background: rgba(255, 255, 255, 0.1);
+  background: #222;
+  border: 1px solid var(--border-color);
   padding: 0.2rem 0.5rem;
   border-radius: 4px;
   color: var(--text-secondary);
@@ -108,35 +104,16 @@ body {
 .node-card {
   background: var(--panel-bg);
   border: 1px solid var(--border-color);
-  border-radius: 12px;
+  border-radius: 8px;
   padding: 1.5rem;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: border-color 0.15s ease;
   position: relative;
   overflow: hidden;
   cursor: pointer;
-  backdrop-filter: blur(10px);
 }
 
 .node-card:hover {
-  transform: translateY(-4px);
-  border-color: var(--accent-color);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3), 0 0 15px rgba(59, 130, 246, 0.1);
-}
-
-.node-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 3px;
-  background: linear-gradient(90deg, transparent, var(--accent-color), transparent);
-  opacity: 0;
-  transition: opacity 0.3s ease;
-}
-
-.node-card:hover::before {
-  opacity: 1;
+  border-color: #666;
 }
 
 .node-header {
@@ -165,7 +142,8 @@ body {
   font-size: 0.75rem;
   font-weight: 500;
   color: var(--success-color);
-  background: rgba(16, 185, 129, 0.1);
+  background: #111;
+  border: 1px solid #1a3a2a;
   padding: 0.25rem 0.6rem;
   border-radius: 12px;
 }
@@ -175,14 +153,6 @@ body {
   height: 6px;
   background-color: var(--success-color);
   border-radius: 50%;
-  box-shadow: 0 0 8px var(--success-color);
-  animation: pulse 2s infinite;
-}
-
-@keyframes pulse {
-  0% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.5; transform: scale(0.8); }
-  100% { opacity: 1; transform: scale(1); }
 }
 
 .node-meta {
@@ -210,7 +180,7 @@ body {
 }
 
 .btn {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--bg-color);
   border: 1px solid var(--border-color);
   color: var(--text-primary);
   padding: 0.5rem 1rem;
@@ -218,7 +188,7 @@ body {
   font-size: 0.85rem;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -227,20 +197,19 @@ body {
 }
 
 .btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.2);
+  background: #222;
+  border-color: #666;
 }
 
 .btn-primary {
-  background: var(--accent-color);
-  border-color: var(--accent-color);
-  color: white;
+  background: var(--text-primary);
+  border-color: var(--text-primary);
+  color: var(--bg-color);
 }
 
 .btn-primary:hover {
-  background: #2563eb;
-  border-color: #2563eb;
-  box-shadow: 0 0 15px var(--accent-glow);
+  background: #ccc;
+  border-color: #ccc;
 }
 
 /* Terminal Modal */
@@ -250,20 +219,18 @@ body {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(8px);
+  background: rgba(0, 0, 0, 0.8);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1000;
   padding: 2rem;
-  animation: fadeIn 0.2s ease;
 }
 
 .terminal-modal {
   background: #000;
   border: 1px solid var(--border-color);
-  border-radius: 12px;
+  border-radius: 8px;
   width: 100%;
   max-width: 1000px;
   height: 80vh;
@@ -271,17 +238,6 @@ body {
   flex-direction: column;
   overflow: hidden;
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-  animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-@keyframes slideUp {
-  from { opacity: 0; transform: translateY(20px) scale(0.98); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 .terminal-header {
