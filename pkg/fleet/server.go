@@ -44,12 +44,17 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/register", s.handleRegister)
 	mux.HandleFunc("/api/nodes", s.handleListNodes)
 
-	// Serve the embedded React dashboard
 	distFS, err := fs.Sub(fleetui.DistFS, "dist")
 	if err != nil {
 		return fmt.Errorf("failed to load embedded UI: %v", err)
 	}
-	mux.Handle("/", http.FileServer(http.FS(distFS)))
+	fileServer := http.FileServer(http.FS(distFS))
+	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+		w.Header().Set("Pragma", "no-cache")
+		w.Header().Set("Expires", "0")
+		fileServer.ServeHTTP(w, r)
+	}))
 
 	addr := fmt.Sprintf("%s:%d", s.host, s.port)
 	fmt.Printf("msh fleet hub listening on http://%s\n", addr)
