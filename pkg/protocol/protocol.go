@@ -48,6 +48,10 @@ type ExecRequest struct {
 	// These are merged with (and override) the session's environment.
 	Env map[string]string `json:"env,omitempty"`
 
+	// EnvFile specifies a path to a .env file to load before execution.
+	// Variables from this file are merged into Env.
+	EnvFile string `json:"env_file,omitempty"`
+
 	// Timeout sets the maximum execution duration for this command.
 	// If the command exceeds this duration, it is killed and the response
 	// status is set to "timeout". Zero means use the default (30s).

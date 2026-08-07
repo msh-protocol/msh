@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-07
+
+### Added
+- **Long-Running Daemons** — Introduced the `msh daemon` subcommand (`start`, `logs`, `kill`, `status`) to manage and stream logs from long-running background processes (like `npm run dev`) without blocking the execution loop.
+- **Native `.env` Injection** — Added the `env_file` field to `ExecRequest` and the `--env-file` CLI flag to natively parse and inject environment variables from `.env` files before command execution.
+
 ## [0.4.0] - 2026-08-07
 
 ### Added

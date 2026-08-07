@@ -25,6 +25,7 @@ func init() {
 	wrapCmd.Flags().IntVar(&flagMaxLines, "max-lines", 200, "Maximum output lines (0 for no limit)")
 	wrapCmd.Flags().BoolVar(&flagNoFiles, "no-files", false, "Skip filesystem change detection")
 	wrapCmd.Flags().BoolVar(&flagPty, "pty", false, "Run command in a pseudo-terminal (PTY)")
+	wrapCmd.Flags().StringVar(&flagEnvFile, "env-file", "", "Path to a .env file to load before execution")
 }
 
 func runWrap(cmd *cobra.Command, args []string) {
@@ -52,6 +53,7 @@ func runWrap(cmd *cobra.Command, args []string) {
 		MaxOutputLines: flagMaxLines,
 		DetectFiles:    !flagNoFiles,
 		UsePty:         flagPty,
+		EnvFile:        flagEnvFile,
 	}
 
 	// Execute

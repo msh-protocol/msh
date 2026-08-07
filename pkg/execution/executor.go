@@ -12,11 +12,13 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
 
 	"github.com/aymanbagabas/go-pty"
+	"github.com/joho/godotenv"
 
 	"github.com/msh-protocol/msh/pkg/fs"
 	"github.com/msh-protocol/msh/pkg/protocol"
@@ -65,6 +67,26 @@ func (e *Executor) Execute(req protocol.ExecRequest) protocol.ExecResponse {
 	cwd := e.session.Cwd
 	if req.Cwd != "" {
 		cwd = req.Cwd
+	}
+
+	// Load .env file if specified
+	if req.EnvFile != "" {
+		envPath := req.EnvFile
+		if !filepath.IsAbs(envPath) {
+			envPath = filepath.Join(cwd, envPath)
+		}
+		
+		if loadedEnv, err := godotenv.Read(envPath); err == nil {
+			if req.Env == nil {
+				req.Env = make(map[string]string)
+			}
+			// req.Env takes precedence over the .env file, so we only add keys that don't exist
+			for k, v := range loadedEnv {
+				if _, exists := req.Env[k]; !exists {
+					req.Env[k] = v
+				}
+			}
+		}
 	}
 
 	// Build environment
