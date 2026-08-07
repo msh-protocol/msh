@@ -22,15 +22,17 @@ type Server struct {
 	port           int
 	host           string
 	token          string
+	fleet          string
 }
 
 // NewServer initializes a new msh HTTP server.
-func NewServer(host string, port int, idleTimeout time.Duration, token string) *Server {
+func NewServer(host string, port int, idleTimeout time.Duration, token string, fleet string) *Server {
 	return &Server{
 		sessionManager: execution.NewSessionManager(idleTimeout),
 		port:           port,
 		host:           host,
 		token:          token,
+		fleet:          fleet,
 	}
 }
 
@@ -47,6 +49,10 @@ func (s *Server) Start() error {
 	// Start a background goroutine to clean up idle sessions
 	go s.cleanupLoop()
 
+	if s.fleet != "" {
+		go s.connectToFleet()
+	}
+
 	return (&http.Server{
 		Addr:         addr,
 		Handler:      mux,
@@ -61,6 +67,39 @@ func (s *Server) cleanupLoop() {
 	defer ticker.Stop()
 	for range ticker.C {
 		s.sessionManager.CleanupIdleSessions()
+	}
+}
+
+func (s *Server) connectToFleet() {
+	for {
+		url := fmt.Sprintf("%s/register?token=%s", s.fleet, s.token)
+		conn, _, err := websocket.DefaultDialer.Dial(url, nil)
+		if err != nil {
+			fmt.Printf("Failed to connect to fleet %s: %v. Retrying in 5s...\n", s.fleet, err)
+			time.Sleep(5 * time.Second)
+			continue
+		}
+
+		fmt.Printf("Connected to msh fleet hub at %s\n", s.fleet)
+
+		// Send registration payload
+		host, _ := os.Hostname()
+		// We should import runtime for GOOS and GOARCH
+		payload := map[string]string{
+			"id":       s.token, // use token as unique ID for now
+			"hostname": host,
+		}
+		conn.WriteJSON(payload)
+
+		// Wait for disconnect
+		for {
+			if _, _, err := conn.ReadMessage(); err != nil {
+				fmt.Printf("Disconnected from fleet hub. Reconnecting in 5s...\n")
+				break
+			}
+		}
+		conn.Close()
+		time.Sleep(5 * time.Second)
 	}
 }
 
