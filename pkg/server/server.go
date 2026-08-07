@@ -103,7 +103,8 @@ func (s *Server) connectToFleet() {
 				break
 			}
 
-			if msg.Type == "stream_start" {
+			switch msg.Type {
+			case "stream_start":
 				cancel() // cancel any existing stream
 				ctx, cancel = context.WithCancel(context.Background())
 				
@@ -132,7 +133,7 @@ func (s *Server) connectToFleet() {
 					}
 				}(ctx, outChan)
 
-			} else if msg.Type == "stream_stop" {
+			case "stream_stop":
 				cancel()
 			}
 		}

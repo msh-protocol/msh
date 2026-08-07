@@ -208,12 +208,9 @@ func (s *Server) handleStreamDaemon(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	// Relay logs from agent to UI
-	for {
-		select {
-		case chunk := <-node.StreamChan:
-			if err := uiConn.WriteMessage(websocket.TextMessage, []byte(chunk)); err != nil {
-				return // UI disconnected
-			}
+	for chunk := range node.StreamChan {
+		if err := uiConn.WriteMessage(websocket.TextMessage, []byte(chunk)); err != nil {
+			return // UI disconnected
 		}
 	}
 }
