@@ -74,7 +74,7 @@ func (s *Server) handleExecute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body, err := io.ReadAll(r.Body)
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20)) // 1MB limit
 	if err != nil {
 		http.Error(w, "Failed to read request body", http.StatusBadRequest)
 		return

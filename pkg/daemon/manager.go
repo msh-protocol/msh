@@ -54,8 +54,11 @@ func (m *Manager) Start(commandStr, cwd string, env map[string]string) (*DaemonS
 	setDetached(cmd)
 
 	cmd.Dir = cwd
-	for k, v := range env {
-		cmd.Env = append(os.Environ(), fmt.Sprintf("%s=%s", k, v))
+	if len(env) > 0 {
+		cmd.Env = os.Environ()
+		for k, v := range env {
+			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
+		}
 	}
 
 	// Redirect output to a log file

@@ -1,6 +1,8 @@
 package execution
 
 import (
+	"fmt"
+	"regexp"
 	"sync"
 	"time"
 )
@@ -9,10 +11,14 @@ import (
 // It provides thread-safe access to sessions and automatically
 // cleans up sessions that have been idle for too long.
 type SessionManager struct {
-	sessions map[string]*SessionWrapper
-	mu       sync.RWMutex
-	timeout  time.Duration
+	sessions    map[string]*SessionWrapper
+	mu          sync.RWMutex
+	timeout     time.Duration
+	maxSessions int
 }
+
+// validSessionID only allows alphanumeric, hyphens, and underscores.
+var validSessionID = regexp.MustCompile(`^[a-zA-Z0-9_\-]{1,128}$`)
 
 // SessionWrapper wraps a Session with metadata for cleanup.
 type SessionWrapper struct {
@@ -26,8 +32,9 @@ func NewSessionManager(idleTimeout time.Duration) *SessionManager {
 		idleTimeout = 30 * time.Minute // default 30 minutes
 	}
 	return &SessionManager{
-		sessions: make(map[string]*SessionWrapper),
-		timeout:  idleTimeout,
+		sessions:    make(map[string]*SessionWrapper),
+		timeout:     idleTimeout,
+		maxSessions: 1000, // prevent memory exhaustion
 	}
 }
 
@@ -38,12 +45,20 @@ func (sm *SessionManager) GetOrCreateSession(id string, baseCwd string) (*Sessio
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
-	// Try to get existing session
+	// Validate session ID format to prevent injection
 	if id != "" {
+		if !validSessionID.MatchString(id) {
+			return nil, fmt.Errorf("invalid session ID format")
+		}
 		if wrapper, exists := sm.sessions[id]; exists {
 			wrapper.LastActive = time.Now()
 			return wrapper.Session, nil
 		}
+	}
+
+	// Enforce max sessions to prevent memory exhaustion
+	if len(sm.sessions) >= sm.maxSessions {
+		return nil, fmt.Errorf("maximum session limit (%d) reached", sm.maxSessions)
 	}
 
 	// Create new session

@@ -12,7 +12,7 @@ import (
 )
 
 func TestServer_Health(t *testing.T) {
-	srv := NewServer("127.0.0.1", 8080, 5*time.Minute)
+	srv := NewServer("127.0.0.1", 8080, 5*time.Minute, "")
 
 	req, err := http.NewRequest("GET", "/health", nil)
 	if err != nil {
@@ -35,7 +35,7 @@ func TestServer_Health(t *testing.T) {
 }
 
 func TestServer_Execute(t *testing.T) {
-	srv := NewServer("127.0.0.1", 8080, 5*time.Minute)
+	srv := NewServer("127.0.0.1", 8080, 5*time.Minute, "")
 
 	execReq := protocol.ExecRequest{
 		Command: "echo hello server",
