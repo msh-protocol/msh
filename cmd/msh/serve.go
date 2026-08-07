@@ -12,6 +12,7 @@ var (
 	flagPort  int
 	flagHost  string
 	flagToken string
+	flagFleet string
 )
 
 func init() {
@@ -27,6 +28,7 @@ over the network while maintaining persistent sessions.`,
 	serveCmd.Flags().IntVarP(&flagPort, "port", "p", 8080, "Port to listen on")
 	serveCmd.Flags().StringVarP(&flagHost, "host", "H", "127.0.0.1", "Host IP to bind to")
 	serveCmd.Flags().StringVar(&flagToken, "token", "", "Bearer token for authorization (auto-generated if empty)")
+	serveCmd.Flags().StringVar(&flagFleet, "fleet", "", "URL of msh fleet server to register with (e.g. ws://localhost:9000)")
 
 	rootCmd.AddCommand(serveCmd)
 }
@@ -40,7 +42,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 		fmt.Printf("\n[msh] Generated Authorization Token: %s\n", token)
 	}
 
-	srv := server.NewServer(flagHost, flagPort, idleTimeout, token)
+	srv := server.NewServer(flagHost, flagPort, idleTimeout, token, flagFleet)
 
 	fmt.Println("Starting msh daemon...")
 	return srv.Start()
