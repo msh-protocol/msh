@@ -10,3 +10,7 @@ When building new features, you MUST follow this exact workflow:
 ## Git Operations
 - **NEVER** run `git add`, `git commit`, or `git push` yourself. Always leave these commands for the user to run in their own terminal. You may only run `git checkout` to switch or create branches.
 
+- **HOWEVER**, you MUST explicitly notify the user and tell them when it is time to run these commands (e.g., at the end of a feature or phase) so they can commit and push the changes.
+
+
+
