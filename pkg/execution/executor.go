@@ -70,12 +70,14 @@ func (e *Executor) Execute(req protocol.ExecRequest) protocol.ExecResponse {
 	// Build environment
 	env := e.session.BuildEnv(req.Env)
 
-	// Take pre-execution filesystem snapshot if file detection is enabled
-	var preSnapshot *fs.Snapshot
+	// 2. Start Hybrid Filesystem Watcher if file detection is enabled
+	var watcher *fs.Watcher
 	if req.DetectFiles {
-		snap, err := fs.TakeSnapshot(cwd, defaultIgnorePatterns())
+		w, err := fs.NewWatcher(cwd, defaultIgnorePatterns())
 		if err == nil {
-			preSnapshot = snap
+			if startErr := w.Start(); startErr == nil {
+				watcher = w
+			}
 		}
 	}
 
@@ -193,16 +195,9 @@ func (e *Executor) Execute(req protocol.ExecRequest) protocol.ExecResponse {
 		}
 	}
 
-	// Compute filesystem diff
-	if req.DetectFiles && preSnapshot != nil {
-		postSnapshot, err := fs.TakeSnapshot(cwd, defaultIgnorePatterns())
-		if err == nil {
-			changes := fs.DiffSnapshots(preSnapshot, postSnapshot)
-			resp.FilesChanged = make([]string, len(changes))
-			for i, c := range changes {
-				resp.FilesChanged[i] = c.Path
-			}
-		}
+	// Compute filesystem diff using the Watcher
+	if watcher != nil {
+		resp.FilesChanged = watcher.Stop()
 	}
 
 	// Update session state

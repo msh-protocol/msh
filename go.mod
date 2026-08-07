@@ -4,6 +4,7 @@ go 1.26.5
 
 require (
 	github.com/aymanbagabas/go-pty v0.2.3
+	github.com/fsnotify/fsnotify v1.10.1
 	github.com/mark3labs/mcp-go v0.57.0
 	github.com/spf13/cobra v1.10.2
 )
