@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-07
+
+### Added
+- **WebSocket Streaming** — Added the `/stream/daemon` WebSocket endpoint to the `msh serve` HTTP daemon. This enables real-time tailing of long-running daemon logs, paving the way for live observability dashboards. Connections authenticate via the `?token=` query parameter.
+
 ## [0.5.0] - 2026-08-07
 
 ### Added
