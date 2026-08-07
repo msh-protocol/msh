@@ -43,6 +43,7 @@ func (s *Server) Start() error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/register", s.handleRegister)
 	mux.HandleFunc("/api/nodes", s.handleListNodes)
+	mux.HandleFunc("/stream/daemon", s.handleStreamDaemon)
 
 	distFS, err := fs.Sub(fleetui.DistFS, "dist")
 	if err != nil {
@@ -116,15 +117,21 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 
 	go node.writePump()
 
-	// Read loop to detect disconnects and handle incoming ExecResponses
+	// Read loop to detect disconnects and handle incoming messages
 	go func() {
 		defer s.unregisterNode(node.ID)
 		for {
-			_, _, err := conn.ReadMessage()
-			if err != nil {
+			var msg FleetMsg
+			if err := conn.ReadJSON(&msg); err != nil {
 				break
 			}
-			// In the future, parse ExecResponse from node and forward to dashboard
+			if msg.Type == "log" {
+				select {
+				case node.StreamChan <- msg.Data:
+				default:
+					// drop if channel is full
+				}
+			}
 		}
 	}()
 }
@@ -149,5 +156,64 @@ func (s *Server) unregisterNode(id string) {
 		n.conn.Close()
 		delete(s.nodes, id)
 		fmt.Printf("Node unregistered: %s\n", id)
+	}
+}
+
+func (s *Server) handleStreamDaemon(w http.ResponseWriter, r *http.Request) {
+	// Wait, the UI connects to /stream/daemon. We need no auth for UI stream since UI doesn't send Bearer easily in WS (it uses query param)
+	// But actually, UI CAN send query param token! Let's check it.
+	if s.token != "" {
+		token := r.URL.Query().Get("token")
+		if token != s.token {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+	}
+
+	daemonID := r.URL.Query().Get("id")
+	if daemonID == "" {
+		http.Error(w, "id query parameter is required", http.StatusBadRequest)
+		return
+	}
+
+	s.mu.RLock()
+	node, ok := s.nodes[daemonID]
+	s.mu.RUnlock()
+
+	if !ok {
+		http.Error(w, "daemon not found", http.StatusNotFound)
+		return
+	}
+
+	uiConn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		fmt.Printf("UI WebSocket upgrade failed: %v\n", err)
+		return
+	}
+	defer uiConn.Close()
+
+	// Tell agent to start streaming
+	node.conn.WriteJSON(FleetMsg{Type: "stream_start"})
+
+	// Setup cleanup to tell agent to stop
+	defer node.conn.WriteJSON(FleetMsg{Type: "stream_stop"})
+
+	// Read from UI to detect UI disconnect
+	go func() {
+		for {
+			if _, _, err := uiConn.ReadMessage(); err != nil {
+				break
+			}
+		}
+	}()
+
+	// Relay logs from agent to UI
+	for {
+		select {
+		case chunk := <-node.StreamChan:
+			if err := uiConn.WriteMessage(websocket.TextMessage, []byte(chunk)); err != nil {
+				return // UI disconnected
+			}
+		}
 	}
 }

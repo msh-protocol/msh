@@ -8,35 +8,36 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// Node represents a connected msh serve daemon.
-type Node struct {
-	ID        string
-	Hostname  string
-	OS        string
-	Arch      string
-	Connected time.Time
-	conn      *websocket.Conn
-	send      chan []byte
-}
-
 // NodeInfo is the payload a daemon sends when registering.
 type NodeInfo struct {
 	ID       string `json:"id"`
 	Hostname string `json:"hostname"`
 	OS       string `json:"os"`
-	Arch     string `json:"arch"`
+	Arch       string `json:"arch"`
 }
 
-// NewNode creates a new connected node reference.
+type FleetMsg struct {
+	Type string `json:"type"`
+	Data string `json:"data"`
+}
+
+// Node represents a connected daemon.
+type Node struct {
+	NodeInfo
+	Connected time.Time
+	conn      *websocket.Conn
+	send      chan []byte
+	StreamChan chan string
+}
+
+// NewNode creates a new node wrapper.
 func NewNode(info NodeInfo, conn *websocket.Conn) *Node {
 	return &Node{
-		ID:        info.ID,
-		Hostname:  info.Hostname,
-		OS:        info.OS,
-		Arch:      info.Arch,
-		Connected: time.Now(),
-		conn:      conn,
-		send:      make(chan []byte, 256),
+		NodeInfo:   info,
+		Connected:  time.Now(),
+		conn:       conn,
+		send:       make(chan []byte, 256),
+		StreamChan: make(chan string, 100),
 	}
 }
 

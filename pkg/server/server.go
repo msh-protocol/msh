@@ -12,6 +12,7 @@ import (
 	"github.com/gorilla/websocket"
 
 	"github.com/msh-protocol/msh/pkg/execution"
+	"github.com/msh-protocol/msh/pkg/fleet"
 	"github.com/msh-protocol/msh/pkg/fs"
 	"github.com/msh-protocol/msh/pkg/protocol"
 )
@@ -91,13 +92,51 @@ func (s *Server) connectToFleet() {
 		}
 		conn.WriteJSON(payload)
 
-		// Wait for disconnect
+		// Context for cancelling log tailing
+		ctx, cancel := context.WithCancel(context.Background())
+
+		// Read loop to detect disconnects and handle messages
 		for {
-			if _, _, err := conn.ReadMessage(); err != nil {
+			var msg fleet.FleetMsg
+			if err := conn.ReadJSON(&msg); err != nil {
 				fmt.Printf("Disconnected from fleet hub. Reconnecting in 5s...\n")
 				break
 			}
+
+			if msg.Type == "stream_start" {
+				cancel() // cancel any existing stream
+				ctx, cancel = context.WithCancel(context.Background())
+				
+				logPath := filepath.Join(".msh", "daemons", s.token+".log")
+				outChan := make(chan []byte)
+
+				go func(c context.Context, p string, ch chan []byte) {
+					fs.TailFile(c, p, ch)
+					close(ch)
+				}(ctx, logPath, outChan)
+
+				go func(c context.Context, ch chan []byte) {
+					for {
+						select {
+						case <-c.Done():
+							return
+						case chunk, ok := <-ch:
+							if !ok {
+								return
+							}
+							conn.WriteJSON(fleet.FleetMsg{
+								Type: "log",
+								Data: string(chunk),
+							})
+						}
+					}
+				}(ctx, outChan)
+
+			} else if msg.Type == "stream_stop" {
+				cancel()
+			}
 		}
+		cancel() // ensure tailing stops if disconnected
 		conn.Close()
 		time.Sleep(5 * time.Second)
 	}
