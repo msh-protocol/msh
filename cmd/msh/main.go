@@ -70,6 +70,7 @@ and returned as a structured JSON payload.`,
 
 	rootCmd.AddCommand(execCmd)
 	rootCmd.AddCommand(mcpCmd)
+	rootCmd.AddCommand(wrapCmd)
 	rootCmd.AddCommand(versionCmd)
 
 	if err := rootCmd.Execute(); err != nil {
