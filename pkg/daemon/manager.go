@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -58,7 +59,7 @@ func (m *Manager) Start(commandStr, cwd string, env map[string]string) (*DaemonS
 	}
 
 	// Redirect output to a log file
-	logFile, err := os.OpenFile(filepath.Join(daemonDir, "output.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	logFile, err := os.OpenFile(filepath.Join(daemonDir, "output.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
 	if err != nil {
 		return nil, err
 	}
@@ -96,10 +97,13 @@ func (m *Manager) saveState(state *DaemonState) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(m.baseDir, state.ID, "state.json"), data, 0644)
+	return os.WriteFile(filepath.Join(m.baseDir, state.ID, "state.json"), data, 0600)
 }
 
 func (m *Manager) GetState(id string) (*DaemonState, error) {
+	if strings.Contains(id, "/") || strings.Contains(id, "\\") || strings.Contains(id, "..") {
+		return nil, fmt.Errorf("invalid daemon id")
+	}
 	data, err := os.ReadFile(filepath.Join(m.baseDir, id, "state.json"))
 	if err != nil {
 		return nil, err
@@ -147,6 +151,9 @@ func (m *Manager) Kill(id string) error {
 }
 
 func (m *Manager) ReadLogs(id string, maxLines int) (string, error) {
+	if strings.Contains(id, "/") || strings.Contains(id, "\\") || strings.Contains(id, "..") {
+		return "", fmt.Errorf("invalid daemon id")
+	}
 	// Simple implementation: read whole file, truncate if necessary.
 	// For huge logs, we would want to read backwards.
 	data, err := os.ReadFile(filepath.Join(m.baseDir, id, "output.log"))

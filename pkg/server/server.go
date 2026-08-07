@@ -15,14 +15,16 @@ type Server struct {
 	sessionManager *execution.SessionManager
 	port           int
 	host           string
+	token          string
 }
 
 // NewServer initializes a new msh HTTP server.
-func NewServer(host string, port int, idleTimeout time.Duration) *Server {
+func NewServer(host string, port int, idleTimeout time.Duration, token string) *Server {
 	return &Server{
 		sessionManager: execution.NewSessionManager(idleTimeout),
 		port:           port,
 		host:           host,
+		token:          token,
 	}
 }
 
@@ -59,6 +61,14 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleExecute(w http.ResponseWriter, r *http.Request) {
+	if s.token != "" {
+		authHeader := r.Header.Get("Authorization")
+		if authHeader != "Bearer "+s.token {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+	}
+
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
