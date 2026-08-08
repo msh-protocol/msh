@@ -70,6 +70,16 @@ type ExecRequest struct {
 	// This is required for commands that demand a TTY (like interactive tools or SSH).
 	// NOTE: When true, Stderr will be merged into Stdout.
 	UsePty bool `json:"use_pty,omitempty"`
+
+	// Engine specifies the execution engine to use (e.g., "subprocess", "docker", "kubernetes").
+	// Defaults to "subprocess" if empty.
+	Engine string `json:"engine,omitempty"`
+
+	// DockerImage specifies the image to use if Engine is "docker".
+	DockerImage string `json:"docker_image,omitempty"`
+
+	// KubernetesNamespace specifies the namespace to use if Engine is "kubernetes".
+	KubernetesNamespace string `json:"kubernetes_namespace,omitempty"`
 }
 
 // ExecResponse defines the structured output contract returned by msh
@@ -153,7 +163,7 @@ const DefaultMaxOutputLines = 200
 const DefaultTimeout = 30 * time.Second
 
 // Version is the current version of the msh protocol.
-const Version = "0.5.0"
+const Version = "1.1.0"
 
 // HookResult records the outcome of a pre/post execution hook.
 type HookResult struct {

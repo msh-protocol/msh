@@ -3,13 +3,16 @@ package fleet
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/fs"
 	"net/http"
+	"os/exec"
 	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
 	fleetui "github.com/msh-protocol/msh/fleet-ui"
+	"github.com/msh-protocol/msh/pkg/protocol"
 )
 
 var upgrader = websocket.Upgrader{
@@ -26,16 +29,21 @@ type Server struct {
 
 	mu    sync.RWMutex
 	nodes map[string]*Node
+	
+	ExecutionQueue chan protocol.ExecRequest
 }
 
 // NewServer initializes a new msh-fleet server.
 func NewServer(host string, port int, token string) *Server {
-	return &Server{
-		host:  host,
-		port:  port,
-		token: token,
-		nodes: make(map[string]*Node),
+	s := &Server{
+		host:           host,
+		port:           port,
+		token:          token,
+		nodes:          make(map[string]*Node),
+		ExecutionQueue: make(chan protocol.ExecRequest, 1000),
 	}
+	go s.autoScaler()
+	return s
 }
 
 // Start begins listening for daemon registrations and serves the dashboard.
@@ -43,6 +51,7 @@ func (s *Server) Start() error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/register", s.handleRegister)
 	mux.HandleFunc("/api/nodes", s.handleListNodes)
+	mux.HandleFunc("/api/execute", s.handleExecute)
 	mux.HandleFunc("/stream/daemon", s.handleStreamDaemon)
 
 	distFS, err := fs.Sub(fleetui.DistFS, "dist")
@@ -211,6 +220,77 @@ func (s *Server) handleStreamDaemon(w http.ResponseWriter, r *http.Request) {
 	for chunk := range node.StreamChan {
 		if err := uiConn.WriteMessage(websocket.TextMessage, []byte(chunk)); err != nil {
 			return // UI disconnected
+		}
+	}
+}
+
+func (s *Server) handleExecute(w http.ResponseWriter, r *http.Request) {
+	if s.token != "" && r.Header.Get("Authorization") != "Bearer "+s.token {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
+	if err != nil {
+		http.Error(w, "Failed to read request body", http.StatusBadRequest)
+		return
+	}
+	defer r.Body.Close()
+
+	req, err := protocol.ParseExecRequest(body)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Invalid JSON payload: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	select {
+	case s.ExecutionQueue <- *req:
+		w.WriteHeader(http.StatusAccepted)
+		w.Write([]byte(`{"status":"queued"}`))
+	default:
+		http.Error(w, "Execution queue full", http.StatusServiceUnavailable)
+	}
+}
+
+func (s *Server) autoScaler() {
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		queueDepth := len(s.ExecutionQueue)
+		s.mu.RLock()
+		nodeCount := len(s.nodes)
+		s.mu.RUnlock()
+
+		// Simple auto-scaling logic: if we have items in the queue and 0 nodes,
+		// or queue depth is much larger than node count, spawn a new daemon.
+		if queueDepth > 0 && (nodeCount == 0 || queueDepth > nodeCount*5) {
+			// Prevent unbounded scaling for this prototype (max 5 nodes)
+			if nodeCount < 5 {
+				fmt.Printf("[Auto-Scaler] Queue depth: %d, Nodes: %d. Spawning new msh daemon...\n", queueDepth, nodeCount)
+				
+				// Find msh binary
+				mshPath, err := exec.LookPath("msh")
+				if err == nil {
+					// Spawn a new background agent connecting back to us
+					cmd := exec.Command(mshPath, "serve", "--fleet", fmt.Sprintf("ws://127.0.0.1:%d", s.port), "--token", s.token)
+					err := cmd.Start()
+					if err != nil {
+						fmt.Printf("[Auto-Scaler] Failed to spawn daemon: %v\n", err)
+					} else {
+						// Detach from the child process so it survives
+						go func(c *exec.Cmd) {
+							c.Wait()
+							fmt.Printf("[Auto-Scaler] Daemon exited.\n")
+						}(cmd)
+					}
+				}
+			}
 		}
 	}
 }

@@ -7,17 +7,12 @@
 package execution
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"io"
-	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"time"
 
-	"github.com/aymanbagabas/go-pty"
 	"github.com/joho/godotenv"
 
 	"github.com/msh-protocol/msh/pkg/fs"
@@ -35,7 +30,9 @@ type Executor struct {
 
 // NewExecutor creates a new Executor bound to the given session.
 func NewExecutor(session *Session) *Executor {
-	return &Executor{session: session}
+	return &Executor{
+		session: session,
+	}
 }
 
 // Execute runs a command and returns a structured ExecResponse.
@@ -127,70 +124,23 @@ func (e *Executor) Execute(req protocol.ExecRequest) protocol.ExecResponse {
 	// Parse the command for cd detection (to update session state)
 	cdTarget := parseCdCommand(req.Command)
 
-	// Build the OS command
+	// Select the execution engine
+	var engine Engine
+	switch req.Engine {
+	case "docker":
+		engine = NewDockerEngine()
+	case "kubernetes":
+		engine = NewKubernetesEngine()
+	default:
+		engine = NewSubprocessEngine()
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	// Capture stdout and stderr
-	var stdoutBuf, stderrBuf bytes.Buffer
-
-	if req.UsePty {
-		var ptmx pty.Pty
-		ptmx, err = pty.New()
-		if err == nil {
-			defer ptmx.Close()
-			
-			var ptyCmd *pty.Cmd
-			if runtime.GOOS == "windows" {
-				cmdPath, _ := exec.LookPath("cmd.exe")
-				if cmdPath == "" {
-					cmdPath = "cmd.exe"
-				}
-				ptyCmd = ptmx.CommandContext(ctx, cmdPath, "/C", req.Command)
-			} else {
-				shPath, _ := exec.LookPath("sh")
-				if shPath == "" {
-					shPath = "/bin/sh"
-				}
-				ptyCmd = ptmx.CommandContext(ctx, shPath, "-c", req.Command)
-			}
-			ptyCmd.Dir = cwd
-			ptyCmd.Env = env
-			
-			err = ptyCmd.Start()
-			if err == nil {
-				// For PTY, stdout and stderr are merged into the PTY stream.
-				// Read the output in the background.
-				done := make(chan struct{})
-				go func() {
-					_, _ = io.Copy(&stdoutBuf, ptmx)
-					close(done)
-				}()
-				
-				// Wait for the command to finish
-				err = ptyCmd.Wait()
-				
-				// Small delay to allow io.Copy to finish reading the remaining buffer
-				select {
-				case <-done:
-				case <-time.After(100 * time.Millisecond):
-				}
-			}
-		}
-	} else {
-		var cmd *exec.Cmd
-		if runtime.GOOS == "windows" {
-			cmd = exec.CommandContext(ctx, "cmd.exe", "/C", req.Command)
-		} else {
-			cmd = exec.CommandContext(ctx, "sh", "-c", req.Command)
-		}
-		cmd.Dir = cwd
-		cmd.Env = env
-		cmd.Stdout = &stdoutBuf
-		cmd.Stderr = &stderrBuf
-		err = cmd.Run()
-	}
-
+	// Run command via engine
+	stdoutStr, stderrStr, exitCode, err := engine.Run(ctx, req, cwd, env)
+	
 	duration := time.Since(startTime)
 
 	// Populate the response (SessionID and Cwd were set earlier)
@@ -202,22 +152,17 @@ func (e *Executor) Execute(req protocol.ExecRequest) protocol.ExecResponse {
 		resp.ExitCode = -1
 		resp.Error = fmt.Sprintf("command timed out after %s", timeout)
 	} else if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			resp.Status = protocol.StatusError
-			resp.ExitCode = exitErr.ExitCode()
-		} else {
-			resp.Status = protocol.StatusError
-			resp.ExitCode = -1
-			resp.Error = err.Error()
-		}
+		resp.Status = protocol.StatusError
+		resp.ExitCode = exitCode
+		resp.Error = err.Error()
 	} else {
 		resp.Status = protocol.StatusSuccess
-		resp.ExitCode = 0
+		resp.ExitCode = exitCode
 	}
 
 	// Sanitize output — strip ANSI codes and truncate
-	stdoutClean, stdoutTruncated := sanitize.CleanOutput(stdoutBuf.String(), maxLines)
-	stderrClean, stderrTruncated := sanitize.CleanOutput(stderrBuf.String(), maxLines)
+	stdoutClean, stdoutTruncated := sanitize.CleanOutput(stdoutStr, maxLines)
+	stderrClean, stderrTruncated := sanitize.CleanOutput(stderrStr, maxLines)
 
 	resp.Stdout = strings.TrimRight(stdoutClean, "\n\r")
 	resp.Stderr = strings.TrimRight(stderrClean, "\n\r")

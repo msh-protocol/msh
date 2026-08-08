@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-08-07
+
+### Added
+- **`msh-fleet` (Enterprise Control Plane)** — Introduced the `msh fleet start` subcommand which spins up a centralized WebSocket registry hub (port 9000) for managing distributed `msh` daemons across your infrastructure.
+- **Embedded React Dashboard** — A premium, dark-mode UI built with React and Vite is now embedded directly into the Go binary via `go:embed`. It auto-updates and displays all connected agents.
+- **Reverse NAT Tunneling** — `msh serve` now connects outbound to the Fleet Hub via WebSockets, allowing the hub to tunnel `stream_start`/`stream_stop` commands and live log data through NATs and firewalls. This powers the "Live Terminal" feature in the dashboard.
+- **Fleet Authentication** — Token-based security requiring `Authorization: Bearer <token>` for agent registration and UI API access.
+
 ## [0.6.0] - 2026-08-07
 
 ### Added
