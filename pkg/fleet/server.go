@@ -13,6 +13,7 @@ import (
 	"github.com/gorilla/websocket"
 	fleetui "github.com/msh-protocol/msh/fleet-ui"
 	"github.com/msh-protocol/msh/pkg/protocol"
+	"github.com/msh-protocol/msh/pkg/db"
 )
 
 var upgrader = websocket.Upgrader{
@@ -29,17 +30,24 @@ type Server struct {
 
 	mu    sync.RWMutex
 	nodes map[string]*Node
+	db    *db.DB
 	
 	ExecutionQueue chan protocol.ExecRequest
 }
 
 // NewServer initializes a new msh-fleet server.
 func NewServer(host string, port int, token string) *Server {
+	database, err := db.InitDB()
+	if err != nil {
+		fmt.Printf("Warning: Failed to initialize SQLite database: %v\n", err)
+	}
+
 	s := &Server{
 		host:           host,
 		port:           port,
 		token:          token,
 		nodes:          make(map[string]*Node),
+		db:             database,
 		ExecutionQueue: make(chan protocol.ExecRequest, 1000),
 	}
 	go s.autoScaler()
@@ -52,6 +60,7 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/register", s.handleRegister)
 	mux.HandleFunc("/api/nodes", s.handleListNodes)
 	mux.HandleFunc("/api/execute", s.handleExecute)
+	mux.HandleFunc("/api/history", s.handleHistory)
 	mux.HandleFunc("/stream/daemon", s.handleStreamDaemon)
 
 	distFS, err := fs.Sub(fleetui.DistFS, "dist")
@@ -255,6 +264,67 @@ func (s *Server) handleExecute(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "Execution queue full", http.StatusServiceUnavailable)
 	}
+}
+
+func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
+	if s.token != "" && r.Header.Get("Authorization") != "Bearer "+s.token {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	
+	// Add CORS headers for the React dashboard
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Headers", "Authorization")
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	if s.db == nil {
+		http.Error(w, "Database not configured", http.StatusServiceUnavailable)
+		return
+	}
+
+	if r.Method == http.MethodPost {
+		// Agent reporting execution result
+		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
+		if err != nil {
+			http.Error(w, "Failed to read request body", http.StatusBadRequest)
+			return
+		}
+		defer r.Body.Close()
+
+		var payload struct {
+			Req  protocol.ExecRequest  `json:"request"`
+			Resp protocol.ExecResponse `json:"response"`
+		}
+
+		if err := json.Unmarshal(body, &payload); err != nil {
+			http.Error(w, fmt.Sprintf("Invalid JSON payload: %v", err), http.StatusBadRequest)
+			return
+		}
+
+		if err := s.db.SaveExecution(payload.Req, payload.Resp); err != nil {
+			http.Error(w, fmt.Sprintf("Failed to save: %v", err), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusCreated)
+		return
+	}
+
+	if r.Method == http.MethodGet {
+		records, err := s.db.GetExecutions(100, 0)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to fetch history: %v", err), http.StatusInternalServerError)
+			return
+		}
+		
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(records)
+		return
+	}
+
+	http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 }
 
 func (s *Server) autoScaler() {

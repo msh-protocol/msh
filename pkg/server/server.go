@@ -1,7 +1,9 @@
 package server
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -208,6 +210,36 @@ func (s *Server) handleExecute(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	w.Write(respBytes)
+
+	// Asynchronously push to fleet history if connected
+	if s.fleet != "" {
+		go func(r protocol.ExecRequest, p protocol.ExecResponse) {
+			payload := struct {
+				Req  protocol.ExecRequest  `json:"request"`
+				Resp protocol.ExecResponse `json:"response"`
+			}{Req: r, Resp: p}
+
+			payloadBytes, _ := json.Marshal(payload)
+			
+			// If fleet is ws://..., convert to http://...
+			httpFleet := s.fleet
+			if len(httpFleet) > 2 && httpFleet[:3] == "ws:" {
+				httpFleet = "http:" + httpFleet[3:]
+			} else if len(httpFleet) > 3 && httpFleet[:4] == "wss:" {
+				httpFleet = "https:" + httpFleet[4:]
+			}
+
+			req, err := http.NewRequest("POST", httpFleet+"/api/history", bytes.NewBuffer(payloadBytes))
+			if err == nil {
+				if s.token != "" {
+					req.Header.Set("Authorization", "Bearer "+s.token)
+				}
+				req.Header.Set("Content-Type", "application/json")
+				client := &http.Client{Timeout: 5 * time.Second}
+				client.Do(req)
+			}
+		}(*req, resp)
+	}
 }
 
 var upgrader = websocket.Upgrader{
