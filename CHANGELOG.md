@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Secret Redaction** — `RedactSecrets` now masks API keys, tokens, and secrets from command output before it reaches the agent. Redaction is on by default (per command, MCP, and HTTP paths) and combines two layers: exact-value masking of environment secrets (env vars, `.env` values, session env) and shape-based masking of well-known formats (AWS access keys, GitHub tokens, Slack tokens, OpenAI/Anthropic/Stripe/Google keys, npm tokens, JWTs, private key blocks). Hook (`pre_exec`/`post_exec`) output is redacted too. Disable with `--no-redact` (CLI) or `"redact_secrets": false` (JSON/MCP).
+
+### Changed
+- **Protocol** — `ExecRequest` gains a `redact_secrets` field (default true when unset); `ExecResponse` gains a `redacted` field listing which secret names/token formats were masked.
+
 ## [1.0.0] - 2026-08-07
 
 ### Added

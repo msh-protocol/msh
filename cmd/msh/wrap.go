@@ -26,6 +26,7 @@ func init() {
 	wrapCmd.Flags().BoolVar(&flagNoFiles, "no-files", false, "Skip filesystem change detection")
 	wrapCmd.Flags().BoolVar(&flagPty, "pty", false, "Run command in a pseudo-terminal (PTY)")
 	wrapCmd.Flags().StringVar(&flagEnvFile, "env-file", "", "Path to a .env file to load before execution")
+	wrapCmd.Flags().BoolVar(&flagNoRedact, "no-redact", false, "Disable secret redaction of command output")
 }
 
 func runWrap(cmd *cobra.Command, args []string) {
@@ -54,6 +55,7 @@ func runWrap(cmd *cobra.Command, args []string) {
 		DetectFiles:    !flagNoFiles,
 		UsePty:         flagPty,
 		EnvFile:        flagEnvFile,
+		RedactSecrets:  redactFlag(),
 	}
 
 	// Execute

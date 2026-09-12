@@ -12,6 +12,7 @@ When an AI agent runs `npm run build`, it usually receives a raw stream of ANSI 
 - **Returns Structured JSON** — Everything is an `ExecResponse`.
 - **Sanitizes Output** — Strips all ANSI codes and progress bars.
 - **Prevents Context Blowouts** — Automatically truncates massive error dumps (keeps first 100 + last 100 lines).
+- **Secret Redaction** — Automatically masks API keys and tokens in command output so secrets never leak into the model's context window.
 - **Detects Prompts** — Kills the process and returns `"status": "blocked"` if a `[y/N]` or password prompt appears.
 - **True Terminal Emulation** — Supports executing commands inside a Pseudo-Terminal (PTY) via `use_pty: true` for tools that demand a TTY.
 - **Network Daemon** — Run `msh serve` to expose an HTTP REST API, allowing remote agents to manage stateful execution sessions over the network.
@@ -122,6 +123,7 @@ Example `claude_desktop_config.json`:
 | `max_output_lines` | `integer` | Truncates output if it exceeds this (saves tokens). |
 | `detect_files` | `boolean` | If true, returns exactly which files were modified. |
 | `use_pty` | `boolean` | If true, runs the command in a Pseudo-Terminal (merges stderr into stdout). |
+| `redact_secrets` | `boolean` | If true (default), masks API keys and tokens in command output. |
 
 ### Response Fields
 
@@ -133,6 +135,7 @@ Example `claude_desktop_config.json`:
 | `stdout` | string | Sanitized standard output (ANSI stripped) |
 | `stderr` | string | Sanitized standard error (ANSI stripped) |
 | `truncated` | bool | Whether output was truncated to save tokens |
+| `redacted` | []string | Secret names / token formats masked from the output |
 | `files_changed` | []string | Files added, modified, or deleted |
 | `duration_ms` | int64 | Execution time in milliseconds |
 | `prompt_detected` | string | Interactive prompt text if execution was blocked |
