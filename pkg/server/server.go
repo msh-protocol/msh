@@ -29,6 +29,7 @@ type Server struct {
 	host           string
 	token          string
 	fleet          string
+	nodeID         string
 }
 
 // NewServer initializes a new msh HTTP server.
@@ -39,6 +40,19 @@ func NewServer(host string, port int, idleTimeout time.Duration, token string, f
 		host:           host,
 		token:          token,
 		fleet:          fleet,
+		nodeID:         protocol.GenerateToken("node-"),
+	}
+}
+
+// NodeID returns the unique node identifier registered with the fleet hub.
+func (s *Server) NodeID() string {
+	return s.nodeID
+}
+
+// SetNodeID sets the unique node identifier registered with the fleet hub.
+func (s *Server) SetNodeID(id string) {
+	if id != "" {
+		s.nodeID = id
 	}
 }
 
@@ -103,7 +117,7 @@ func (s *Server) connectToFleet() {
 
 		// Registration payload
 		host, _ := os.Hostname()
-		payload, _ := json.Marshal(fleet.NodeInfo{ID: s.token, Hostname: host, OS: runtime.GOOS, Arch: runtime.GOARCH})
+		payload, _ := json.Marshal(fleet.NodeInfo{ID: s.nodeID, Hostname: host, OS: runtime.GOOS, Arch: runtime.GOARCH})
 		sendCh <- payload
 
 		// Context for cancelling log tailing
@@ -136,7 +150,11 @@ func (s *Server) connectToFleet() {
 				logCancel() // cancel any existing stream
 				logCtx, logCancel = context.WithCancel(context.Background())
 
-				logPath := filepath.Join(".msh", "daemons", s.token+".log")
+				logPath := filepath.Join(".msh", "daemons", s.nodeID+".log")
+				_ = os.MkdirAll(filepath.Dir(logPath), 0755)
+				if f, err := os.OpenFile(logPath, os.O_CREATE|os.O_RDWR, 0644); err == nil {
+					f.Close()
+				}
 				outChan := make(chan []byte)
 
 				go func(c context.Context, p string, ch chan []byte) {
@@ -326,7 +344,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleExecute(w http.ResponseWriter, r *http.Request) {
 	if s.token != "" {
 		authHeader := r.Header.Get("Authorization")
-		if authHeader != "Bearer "+s.token {
+		if !protocol.SecureCompare(authHeader, "Bearer "+s.token) {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
@@ -421,7 +439,7 @@ func (s *Server) handleStreamDaemon(w http.ResponseWriter, r *http.Request) {
 	// Authenticate via query string
 	if s.token != "" {
 		token := r.URL.Query().Get("token")
-		if token != s.token {
+		if !protocol.SecureCompare(token, s.token) {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
@@ -434,7 +452,7 @@ func (s *Server) handleStreamDaemon(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Prevent path traversal
-	if filepath.Base(daemonID) != daemonID {
+	if filepath.Base(daemonID) != daemonID || strings.ContainsAny(daemonID, "/\\..") {
 		http.Error(w, "invalid daemon id", http.StatusBadRequest)
 		return
 	}
@@ -551,7 +569,7 @@ func (s *Server) handleStreamExec(w http.ResponseWriter, r *http.Request) {
 				tok = strings.TrimPrefix(a, "Bearer ")
 			}
 		}
-		if tok != s.token {
+		if !protocol.SecureCompare(tok, s.token) {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}

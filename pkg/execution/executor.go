@@ -17,6 +17,7 @@ import (
 
 	"github.com/msh-protocol/msh/pkg/fs"
 	"github.com/msh-protocol/msh/pkg/hooks"
+	"github.com/msh-protocol/msh/pkg/prompts"
 	"github.com/msh-protocol/msh/pkg/protocol"
 	"github.com/msh-protocol/msh/pkg/sanitize"
 )
@@ -56,17 +57,26 @@ func (e *Executor) Execute(req protocol.ExecRequest) protocol.ExecResponse {
 	ctx, cancel := context.WithTimeout(context.Background(), p.timeout)
 	defer cancel()
 
-	stdoutStr, stderrStr, exitCode, answersUsed, err := selectEngine(req).Run(ctx, req, p.cwd, p.env)
+	engine := selectEngine(req)
+	var stdoutStr, stderrStr string
+	var exitCode, answersUsed int
+	var err error
+	if se, ok := engine.(StreamingEngine); ok {
+		stdoutStr, stderrStr, exitCode, answersUsed, err = se.RunStreaming(ctx, req, p.cwd, p.env, nil, nil, p.policy)
+	} else {
+		stdoutStr, stderrStr, exitCode, answersUsed, err = engine.Run(ctx, req, p.cwd, p.env)
+	}
 
 	return e.finalize(p, ctx, startTime, stdoutStr, stderrStr, exitCode, answersUsed, err)
 }
 
 // ExecuteStreaming runs a command while pushing raw output chunks to sink in
 // real time. Pre-supplied PromptAnswers are fed automatically; when they run
-// out, live (which may block) is consulted for additional answers. The caller
-// owns ctx and is expected to apply the request timeout and cancellation.
-// Engines that do not support streaming (docker/kubernetes) fall back to a
-// buffered run whose full output is flushed to the sink once at completion.
+// out, committed policy answers (.msh/prompts.yaml) take over, and then live
+// (which may block) is consulted for additional answers. The caller owns ctx
+// and is expected to apply the request timeout and cancellation. Engines that
+// do not support streaming fall back to a buffered run whose full output is
+// flushed to the sink once at completion.
 func (e *Executor) ExecuteStreaming(ctx context.Context, req protocol.ExecRequest, sink OutputSink, live AnswerProvider) protocol.ExecResponse {
 	startTime := time.Now()
 	p := e.prepare(req, startTime)
@@ -76,7 +86,7 @@ func (e *Executor) ExecuteStreaming(ctx context.Context, req protocol.ExecReques
 
 	engine := selectEngine(req)
 	if se, ok := engine.(StreamingEngine); ok {
-		stdoutStr, stderrStr, exitCode, answersUsed, err := se.RunStreaming(ctx, req, p.cwd, p.env, sink, live)
+		stdoutStr, stderrStr, exitCode, answersUsed, err := se.RunStreaming(ctx, req, p.cwd, p.env, sink, live, p.policy)
 		return e.finalize(p, ctx, startTime, stdoutStr, stderrStr, exitCode, answersUsed, err)
 	}
 
@@ -110,6 +120,7 @@ type prep struct {
 	env      []string
 	resp     protocol.ExecResponse
 	cfg      *hooks.Config
+	policy   prompts.AnswerFunc
 	watcher  *fs.Watcher
 	cdTarget string
 	early    protocol.ExecResponse // non-zero when the run short-circuits
@@ -189,6 +200,12 @@ func (e *Executor) prepare(req protocol.ExecRequest, startTime time.Time) *prep 
 		}
 	}
 	p.cfg = cfg
+
+	// 1b. Load the committed prompt-answer policy (.msh/prompts.yaml). A
+	// malformed policy is tolerated: runs proceed without committed answers.
+	if policyConfig, perr := prompts.LoadConfig(p.cwd); perr == nil {
+		p.policy = policyConfig.Resolver()
+	}
 
 	// 2. Start Hybrid Filesystem Watcher if file detection is enabled
 	if req.DetectFiles {

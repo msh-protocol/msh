@@ -1,12 +1,15 @@
 package fleet
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"io/fs"
+	"math"
 	"net/http"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -73,6 +76,7 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/nodes", s.handleListNodes)
 	mux.HandleFunc("/api/execute", s.handleExecute)
 	mux.HandleFunc("/api/history", s.handleHistory)
+	mux.HandleFunc("/api/metrics", s.handleMetrics)
 	mux.HandleFunc("/stream/daemon", s.handleStreamDaemon)
 	mux.HandleFunc("/stream/exec", s.handleStreamExec)
 
@@ -92,16 +96,13 @@ func (s *Server) Start() error {
 	fmt.Printf("msh fleet hub listening on http://%s\n", addr)
 
 	return (&http.Server{
-		Addr:         addr,
-		Handler:      mux,
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 10 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		Addr:    addr,
+		Handler: mux,
 	}).ListenAndServe()
 }
 
 func (s *Server) handleListNodes(w http.ResponseWriter, r *http.Request) {
-	if s.token != "" && r.Header.Get("Authorization") != "Bearer "+s.token {
+	if s.token != "" && !protocol.SecureCompare(r.Header.Get("Authorization"), "Bearer "+s.token) {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -124,7 +125,7 @@ func (s *Server) handleListNodes(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
-	if s.token != "" && r.URL.Query().Get("token") != s.token {
+	if s.token != "" && !protocol.SecureCompare(r.URL.Query().Get("token"), s.token) {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -274,7 +275,7 @@ func (s *Server) handleStreamExec(w http.ResponseWriter, r *http.Request) {
 				tok = strings.TrimPrefix(a, "Bearer ")
 			}
 		}
-		if tok != s.token {
+		if !protocol.SecureCompare(tok, s.token) {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
@@ -378,7 +379,7 @@ func (s *Server) handleStreamDaemon(w http.ResponseWriter, r *http.Request) {
 	// But actually, UI CAN send query param token! Let's check it.
 	if s.token != "" {
 		token := r.URL.Query().Get("token")
-		if token != s.token {
+		if !protocol.SecureCompare(token, s.token) {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
@@ -406,31 +407,40 @@ func (s *Server) handleStreamDaemon(w http.ResponseWriter, r *http.Request) {
 	}
 	defer uiConn.Close()
 
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+
 	// Tell agent to start streaming
-	node.conn.WriteJSON(FleetMsg{Type: "stream_start"})
+	node.SendMessage(FleetMsg{Type: "stream_start"})
 
 	// Setup cleanup to tell agent to stop
-	defer node.conn.WriteJSON(FleetMsg{Type: "stream_stop"})
+	defer node.SendMessage(FleetMsg{Type: "stream_stop"})
 
 	// Read from UI to detect UI disconnect
 	go func() {
 		for {
 			if _, _, err := uiConn.ReadMessage(); err != nil {
+				cancel()
 				break
 			}
 		}
 	}()
 
 	// Relay logs from agent to UI
-	for chunk := range node.StreamChan {
-		if err := uiConn.WriteMessage(websocket.TextMessage, []byte(chunk)); err != nil {
-			return // UI disconnected
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case chunk := <-node.StreamChan:
+			if err := uiConn.WriteMessage(websocket.TextMessage, []byte(chunk)); err != nil {
+				return
+			}
 		}
 	}
 }
 
 func (s *Server) handleExecute(w http.ResponseWriter, r *http.Request) {
-	if s.token != "" && r.Header.Get("Authorization") != "Bearer "+s.token {
+	if s.token != "" && !protocol.SecureCompare(r.Header.Get("Authorization"), "Bearer "+s.token) {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -463,7 +473,7 @@ func (s *Server) handleExecute(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
-	if s.token != "" && r.Header.Get("Authorization") != "Bearer "+s.token {
+	if s.token != "" && !protocol.SecureCompare(r.Header.Get("Authorization"), "Bearer "+s.token) {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -509,18 +519,81 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if r.Method == http.MethodGet {
-		records, err := s.db.GetExecutions(100, 0)
+		limit := 50
+		if v := r.URL.Query().Get("limit"); v != "" {
+			n, err := strconv.Atoi(v)
+			if err == nil && n > 0 {
+				limit = n
+			}
+		}
+		if limit > 200 {
+			limit = 200
+		}
+
+		offset := 0
+		if v := r.URL.Query().Get("offset"); v != "" {
+			n, err := strconv.Atoi(v)
+			if err == nil && n > 0 {
+				offset = n
+			}
+		}
+
+		records, err := s.db.GetExecutions(limit, offset)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Failed to fetch history: %v", err), http.StatusInternalServerError)
 			return
 		}
-		
+
+		total, err := s.db.Count()
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to fetch history count: %v", err), http.StatusInternalServerError)
+			return
+		}
+
 		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Access-Control-Expose-Headers", "X-Total-Count")
+		w.Header().Set("X-Total-Count", strconv.Itoa(total))
 		json.NewEncoder(w).Encode(records)
 		return
 	}
 
 	http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+}
+
+func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
+	if s.token != "" && !protocol.SecureCompare(r.Header.Get("Authorization"), "Bearer "+s.token) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	s.mu.RLock()
+	activeDaemons := len(s.nodes)
+	s.mu.RUnlock()
+
+	dbMetrics, err := s.db.GetMetrics()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to compute metrics: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	avgLat := math.Round(dbMetrics.AvgLatencyMs*10) / 10
+	succRate := math.Round(dbMetrics.SuccessRate*10) / 10
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"total_executions":  dbMetrics.TotalExecutions,
+		"active_daemons":    activeDaemons,
+		"avg_latency_ms":    avgLat,
+		"success_count":     dbMetrics.SuccessCount,
+		"error_count":       dbMetrics.ErrorCount,
+		"success_rate":      succRate,
+		"total_duration_ms": dbMetrics.TotalDurationMs,
+	})
 }
 
 func (s *Server) autoScaler() {

@@ -3,9 +3,9 @@ package main
 import (
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/msh-protocol/msh/pkg/fleet"
+	"github.com/msh-protocol/msh/pkg/protocol"
 	"github.com/spf13/cobra"
 )
 
@@ -23,7 +23,7 @@ var fleetStartCmd = &cobra.Command{
 		token, _ := cmd.Flags().GetString("token")
 
 		if token == "" {
-			token = "msh-" + time.Now().Format("20060102150405")
+			token = protocol.GenerateToken("msh-")
 			fmt.Printf("\n[msh-fleet] Generated Admin Token: %s\n\n", token)
 		}
 

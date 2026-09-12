@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/msh-protocol/msh/pkg/prompts"
 	"github.com/msh-protocol/msh/pkg/sanitize"
 )
 
@@ -19,16 +20,32 @@ type promptAnswerer struct {
 	answers  []string
 	index    int
 	answered int
+	lineEnd  string
+	policy   prompts.AnswerFunc
 	live     func() (string, bool)
 	onPrompt func(prompt string, answered bool)
 }
 
-// newPromptAnswerer creates an answerer that writes to stdin.
+// newPromptAnswerer creates an answerer that writes to stdin, terminating
+// each answer with a newline (the default for pipe mode).
 func newPromptAnswerer(stdin io.Writer, answers []string) *promptAnswerer {
 	return &promptAnswerer{
 		stdin:   stdin,
 		answers: answers,
+		lineEnd: "\n",
 	}
+}
+
+// setLineEnd overrides the answer terminator; PTY mode on Windows requires
+// a carriage return ("\r\n") for the Enter keypress to register.
+func (p *promptAnswerer) setLineEnd(end string) {
+	p.lineEnd = end
+}
+
+// setPolicy installs the committed-answer resolver consulted once explicit
+// pre-supplied answers run out and before the live (agent) source is asked.
+func (p *promptAnswerer) setPolicy(resolver prompts.AnswerFunc) {
+	p.policy = resolver
 }
 
 // setLive installs an optional fallback answer source, consulted once
@@ -66,14 +83,27 @@ func (p *promptAnswerer) respondFor(text string) bool {
 		answer := p.answers[p.index]
 		p.index++
 		p.answered++
-		_, _ = io.WriteString(p.stdin, answer+"\n")
+		_, _ = io.WriteString(p.stdin, answer+p.lineEnd)
 		if p.onPrompt != nil {
 			p.onPrompt(prompt, true)
 		}
 		return true
 	}
 
-	// 2. Live answer source — notify we are awaiting, then block up to the
+	// 2. Committed policy answer (from .msh/prompts.yaml) — a reusable
+	//    default that applies when no explicit answer was supplied.
+	if p.policy != nil {
+		if answer, ok := p.policy(prompt); ok {
+			p.answered++
+			_, _ = io.WriteString(p.stdin, answer+p.lineEnd)
+			if p.onPrompt != nil {
+				p.onPrompt(prompt, true)
+			}
+			return true
+		}
+	}
+
+	// 3. Live answer source — notify we are awaiting, then block up to the
 	//    caller for an answer.
 	if p.live != nil {
 		if p.onPrompt != nil {
@@ -82,7 +112,7 @@ func (p *promptAnswerer) respondFor(text string) bool {
 		a, ok := p.live()
 		if ok {
 			p.answered++
-			_, _ = io.WriteString(p.stdin, a+"\n")
+			_, _ = io.WriteString(p.stdin, a+p.lineEnd)
 			if p.onPrompt != nil {
 				p.onPrompt(prompt, true)
 			}
@@ -91,7 +121,7 @@ func (p *promptAnswerer) respondFor(text string) bool {
 		return false
 	}
 
-	// 3. No answer available at all — report the pending prompt.
+	// 4. No answer available at all — report the pending prompt.
 	if p.onPrompt != nil {
 		p.onPrompt(prompt, false)
 	}

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/aymanbagabas/go-pty"
+	"github.com/msh-protocol/msh/pkg/prompts"
 	"github.com/msh-protocol/msh/pkg/protocol"
 )
 
@@ -21,19 +22,19 @@ func NewSubprocessEngine() *SubprocessEngine {
 }
 
 func (s *SubprocessEngine) Run(ctx context.Context, req protocol.ExecRequest, cwd string, env []string) (string, string, int, int, error) {
-	return s.RunStreaming(ctx, req, cwd, env, nil, nil)
+	return s.RunStreaming(ctx, req, cwd, env, nil, nil, nil)
 }
 
 // RunStreaming implements StreamingEngine. When answers are provided it feeds
 // them to the process stdin in real time; when sink is set it pushes raw
 // output chunks as they are read instead of only at completion.
-func (s *SubprocessEngine) RunStreaming(ctx context.Context, req protocol.ExecRequest, cwd string, env []string, sink OutputSink, live AnswerProvider) (string, string, int, int, error) {
+func (s *SubprocessEngine) RunStreaming(ctx context.Context, req protocol.ExecRequest, cwd string, env []string, sink OutputSink, live AnswerProvider, policy prompts.AnswerFunc) (string, string, int, int, error) {
 	answers := req.PromptAnswers
 
 	if req.UsePty {
-		return s.runPTY(ctx, req, cwd, env, answers, live, sink)
+		return s.runPTY(ctx, req, cwd, env, answers, live, policy, sink)
 	}
-	return s.runPipes(ctx, req, cwd, env, answers, live, sink)
+	return s.runPipes(ctx, req, cwd, env, answers, live, policy, sink)
 }
 
 // sinkWriter relays chunks to an underlying writer and optionally to an
@@ -61,12 +62,25 @@ func sinkOf(out io.Writer, sink OutputSink, stream string) io.Writer {
 	return &sinkWriter{out: out, sink: sink, stream: stream}
 }
 
+// ptyLineEnd returns the answer terminator used when feeding a pseudo
+// terminal: PTYs on Windows expect a carriage return for Enter to register.
+func ptyLineEnd() string {
+	if runtime.GOOS == "windows" {
+		return "\r\n"
+	}
+	return "\n"
+}
+
 // buildAnswerer creates the prompt answerer used across a streaming run,
-// wiring in the optional live answer source and sink notification.
-func buildAnswerer(stdin io.Writer, answers []string, live AnswerProvider, sink OutputSink) *promptAnswerer {
+// wiring in the optional live answer source, committed answer policy, and
+// sink notification.
+func buildAnswerer(stdin io.Writer, answers []string, live AnswerProvider, policy prompts.AnswerFunc, sink OutputSink) *promptAnswerer {
 	a := newPromptAnswerer(stdin, answers)
 	if live != nil {
 		a.setLive(live)
+	}
+	if policy != nil {
+		a.setPolicy(policy)
 	}
 	if sink != nil {
 		a.setOnPrompt(sink.OnPrompt)
@@ -76,7 +90,7 @@ func buildAnswerer(stdin io.Writer, answers []string, live AnswerProvider, sink 
 
 // runPipes executes the command with piped stdout/stderr/stdin, feeding
 // prompt answers (pre-supplied or live) in real time.
-func (s *SubprocessEngine) runPipes(ctx context.Context, req protocol.ExecRequest, cwd string, env []string, answers []string, live AnswerProvider, sink OutputSink) (string, string, int, int, error) {
+func (s *SubprocessEngine) runPipes(ctx context.Context, req protocol.ExecRequest, cwd string, env []string, answers []string, live AnswerProvider, policy prompts.AnswerFunc, sink OutputSink) (string, string, int, int, error) {
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {
 		cmd = exec.CommandContext(ctx, "cmd.exe", "/C", req.Command)
@@ -90,7 +104,7 @@ func (s *SubprocessEngine) runPipes(ctx context.Context, req protocol.ExecReques
 	// real input instead of EOF. Otherwise fall back to the original
 	// /dev/null behavior.
 	var stdin io.WriteCloser
-	if len(answers) > 0 || live != nil {
+	if len(answers) > 0 || live != nil || policy != nil {
 		pw, err := cmd.StdinPipe()
 		if err != nil {
 			return "", "", -1, 0, err
@@ -114,7 +128,7 @@ func (s *SubprocessEngine) runPipes(ctx context.Context, req protocol.ExecReques
 	var stdoutBuf, stderrBuf bytes.Buffer
 	var answerer *promptAnswerer
 	if stdin != nil {
-		answerer = buildAnswerer(stdin, answers, live, sink)
+		answerer = buildAnswerer(stdin, answers, live, policy, sink)
 	}
 
 	var wg sync.WaitGroup
@@ -171,7 +185,7 @@ func (s *SubprocessEngine) runPipes(ctx context.Context, req protocol.ExecReques
 
 // runPTY executes the command inside a pseudo-terminal, merging stderr into
 // stdout, and feeds prompt answers to the PTY master in real time.
-func (s *SubprocessEngine) runPTY(ctx context.Context, req protocol.ExecRequest, cwd string, env []string, answers []string, live AnswerProvider, sink OutputSink) (string, string, int, int, error) {
+func (s *SubprocessEngine) runPTY(ctx context.Context, req protocol.ExecRequest, cwd string, env []string, answers []string, live AnswerProvider, policy prompts.AnswerFunc, sink OutputSink) (string, string, int, int, error) {
 	ptmx, err := pty.New()
 	if err != nil {
 		return "", "", -1, 0, err
@@ -200,7 +214,8 @@ func (s *SubprocessEngine) runPTY(ctx context.Context, req protocol.ExecRequest,
 		return "", "", -1, 0, err
 	}
 
-	answerer := buildAnswerer(ptmx, answers, live, sink)
+	answerer := buildAnswerer(ptmx, answers, live, policy, sink)
+	answerer.setLineEnd(ptyLineEnd())
 	var stdoutBuf bytes.Buffer
 
 	done := make(chan struct{})

@@ -111,7 +111,17 @@ All output returned in `stdout` and `stderr` is processed through the msh saniti
    - `Are you sure`, `Press enter to continue`
    - `Ok to proceed?`, `Do you want to install`
 
-When `prompt_answers` are provided, the subprocess engine streams output in real time and feeds the next answer (plus a newline) to the process stdin the moment a prompt is detected — including prompts with no trailing newline. The run is only marked `blocked` if a prompt remains after all answers are consumed; each consumed answer is reported via `answers_used`. Only the subprocess engine answers prompts; docker/kubernetes engines report them but cannot feed input.
+When `prompt_answers` are provided, the subprocess engine streams output in real time and feeds the next answer (plus a newline) to the process stdin the moment a prompt is detected — including prompts with no trailing newline. The run is only marked `blocked` if a prompt remains after all answers are consumed; each consumed answer is reported via `answers_used`. The docker engine does the same: `docker run -i` attaches the container stdin, so prompts inside the container are answered through the same streaming path and `answers_used` is reported. Kubernetes answers prompts via its PTY path.
+
+A workspace can also commit **reusable answers** in `.msh/prompts.yaml`:
+
+```yaml
+prompts:
+  - match: "(?i)install.*\\[y/N\\]"
+    answer: "n"
+```
+
+Each `match` is a regex tested against the detected prompt text; the first match feeds the answer whenever no explicit `prompt_answers`/`--answer` was supplied for it. Explicit per-request answers take precedence, then the policy file, then live answers (streaming clients), then the run is reported waiting.
 
 4. **Secret Redaction** — Secrets are masked from output before it reaches the agent:
    - **Exact-value masking** — the concrete values of environment secrets are replaced with `[REDACTED:<name>]`. Only variables whose names look sensitive (`TOKEN`, `KEY`, `SECRET`, `PASSWORD`, `PASS`, `CREDENTIAL`, `PRIVATE`, `AUTH`) are matched, and values shorter than 4 characters or containing whitespace are ignored to avoid corrupting ordinary text.

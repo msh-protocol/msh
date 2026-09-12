@@ -71,10 +71,10 @@ func TestFleetRemoteStreaming(t *testing.T) {
 		fmt.Sprintf("ws://127.0.0.1:%d", hub.Port()))
 	go daemon.Start()
 
-	waitNode(t, hub.Port(), token, token)
+	waitNode(t, hub.Port(), token, daemon.NodeID())
 
 	wsURL := fmt.Sprintf("ws://127.0.0.1:%d/stream/exec?token=%s&id=%s",
-		hub.Port(), token, token)
+		hub.Port(), token, daemon.NodeID())
 	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
 	if err != nil {
 		t.Fatalf("failed to dial remote stream: %v", err)

@@ -131,3 +131,66 @@ func (db *DB) GetExecutions(limit, offset int) ([]ExecutionRecord, error) {
 
 	return records[offset:end], nil
 }
+
+// Count returns the total number of execution records.
+func (db *DB) Count() (int, error) {
+	db.mu.RLock()
+	defer db.mu.RUnlock()
+
+	records, err := db.load()
+	if err != nil {
+		return 0, err
+	}
+	return len(records), nil
+}
+
+// MetricsData aggregates execution statistics computed from database records.
+type MetricsData struct {
+	TotalExecutions int     `json:"total_executions"`
+	AvgLatencyMs    float64 `json:"avg_latency_ms"`
+	SuccessCount    int     `json:"success_count"`
+	ErrorCount      int     `json:"error_count"`
+	SuccessRate     float64 `json:"success_rate"`
+	TotalDurationMs int64   `json:"total_duration_ms"`
+}
+
+// GetMetrics returns aggregated statistics from all stored execution records.
+func (db *DB) GetMetrics() (MetricsData, error) {
+	db.mu.RLock()
+	defer db.mu.RUnlock()
+
+	records, err := db.load()
+	if err != nil {
+		return MetricsData{}, err
+	}
+
+	total := len(records)
+	if total == 0 {
+		return MetricsData{}, nil
+	}
+
+	var totalDuration int64
+	var successCount int
+	var errorCount int
+
+	for _, r := range records {
+		totalDuration += r.DurationMs
+		if r.Status == "success" || (r.ExitCode == 0 && r.Status != "error" && r.Status != "timeout" && r.Status != "blocked") {
+			successCount++
+		} else {
+			errorCount++
+		}
+	}
+
+	avgLatency := float64(totalDuration) / float64(total)
+	successRate := (float64(successCount) / float64(total)) * 100.0
+
+	return MetricsData{
+		TotalExecutions: total,
+		AvgLatencyMs:    avgLatency,
+		SuccessCount:    successCount,
+		ErrorCount:      errorCount,
+		SuccessRate:     successRate,
+		TotalDurationMs: totalDuration,
+	}, nil
+}

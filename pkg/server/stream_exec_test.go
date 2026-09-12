@@ -147,6 +147,73 @@ func TestServer_StreamExecResult(t *testing.T) {
 	}
 }
 
+// TestServer_StreamExecUsePtyAnswers verifies the live-execution WebSocket
+// answers prompts mid-flight when the command runs under a PTY (use_pty), the
+// path that merges stderr into stdout and requires \r\n line endings on
+// Windows.
+func TestServer_StreamExecUsePtyAnswers(t *testing.T) {
+	srv := NewServer("127.0.0.1", 0, 5*time.Minute, "", "")
+	ts := httptest.NewServer(http.HandlerFunc(srv.handleStreamExec))
+	defer ts.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(ts.URL, "http")
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("failed to connect to %s: %v", wsURL, err)
+	}
+	defer conn.Close()
+	conn.SetReadDeadline(time.Now().Add(20 * time.Second))
+
+	rawReq, _ := json.Marshal(protocol.ExecRequest{
+		Command:        streamDoublePromptCmd(t),
+		UsePty:         true,
+		MaxOutputLines: 10,
+	})
+	if err := conn.WriteJSON(StreamMsg{Type: "start", Request: rawReq}); err != nil {
+		t.Fatalf("failed to send start: %v", err)
+	}
+
+	answers := []string{"yes", "no"}
+	answerIdx := 0
+	var result protocol.ExecResponse
+
+	for {
+		var msg StreamMsg
+		if err := conn.ReadJSON(&msg); err != nil {
+			t.Fatalf("failed to read message: %v", err)
+		}
+		switch msg.Type {
+		case "output":
+			// consumed; chunks stream in real time
+		case "prompt":
+			if msg.Awaiting && answerIdx < len(answers) {
+				if err := conn.WriteJSON(StreamMsg{Type: "answer", Data: answers[answerIdx]}); err != nil {
+					t.Fatalf("failed to send answer: %v", err)
+				}
+				answerIdx++
+			}
+		case "result":
+			if err := json.Unmarshal(msg.Response, &result); err != nil {
+				t.Fatalf("failed to unmarshal result: %v", err)
+			}
+			if result.AnswersUsed != 2 {
+				t.Fatalf("expected answers_used=2, got %d", result.AnswersUsed)
+			}
+			if !strings.Contains(result.Stdout, "first=yes") || !strings.Contains(result.Stdout, "second=no") {
+				t.Fatalf("expected PTY answers echoed back, got %q", result.Stdout)
+			}
+			if result.Status == protocol.StatusBlocked {
+				t.Fatalf("expected run to complete, got blocked on %q", result.PromptDetected)
+			}
+			return
+		case "error":
+			t.Fatalf("server error: %s", msg.Error)
+		default:
+			t.Fatalf("unexpected message type: %s", msg.Type)
+		}
+	}
+}
+
 // TestServer_StreamExecUnauthorized verifies the endpoint rejects requests
 // without the configured token.
 func TestServer_StreamExecUnauthorized(t *testing.T) {
