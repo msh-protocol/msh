@@ -4,6 +4,9 @@
   "description": "TypeScript SDK for msh: sudo for AI agents. Safe, structured, non-blocking command execution for LLMs.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "npx tsc",
     "test": "node --test dist/index.test.js"
