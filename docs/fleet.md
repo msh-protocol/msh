@@ -41,6 +41,19 @@ Because daemons connect *outbound* to the Fleet Hub via WebSockets, you do not n
 ### Live Terminal Streaming
 Click the **Live Terminal** button on any connected node in the dashboard. The Fleet Hub will instantly instruct the daemon to begin tailing its execution logs (`.msh/daemons/<id>.log`) and stream them directly to your browser with zero latency.
 
+### Remote Streaming Exec
+The hub exposes `/stream/exec`, so a client can run a command live on any
+registered daemon without inbound ports:
+
+```
+ws://127.0.0.1:9000/stream/exec?token=<hub-token>&id=<daemon-id>
+```
+
+Send the usual streaming frames: `start` (with an `ExecRequest`), receive
+`output`/`prompt` events, reply with `answer`, and cancel with `stop`. The hub
+tunnels the run to the daemon and relays events back. Omit `id` to use any
+registered daemon. See `docs/protocol-spec.md` for the full frame format.
+
 ### Secure by Default
 - The Fleet Hub verifies the `Authorization` token for every WebSocket connection and API request.
 - Cross-Origin Resource Sharing (CORS) is strictly managed.

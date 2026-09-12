@@ -43,3 +43,6 @@ me.md
 .agents/
 
 test_pty.py
+
+# Runtime logs
+*.log

@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"net/http"
 	"os/exec"
+	"strings"
 	"sync"
 	"time"
 
@@ -31,8 +32,13 @@ type Server struct {
 	mu    sync.RWMutex
 	nodes map[string]*Node
 	db    *db.DB
-	
+
 	ExecutionQueue chan protocol.ExecRequest
+
+	// streamMu guards the relayed-exec stream registry: each entry maps a
+	// daemon-side stream ID to a remote client websocket.
+	streamMu sync.Mutex
+	streams  map[string]*streamConn
 }
 
 // NewServer initializes a new msh-fleet server.
@@ -49,9 +55,15 @@ func NewServer(host string, port int, token string) *Server {
 		nodes:          make(map[string]*Node),
 		db:             database,
 		ExecutionQueue: make(chan protocol.ExecRequest, 1000),
+		streams:        make(map[string]*streamConn),
 	}
 	go s.autoScaler()
 	return s
+}
+
+// Port returns the configured listen port.
+func (s *Server) Port() int {
+	return s.port
 }
 
 // Start begins listening for daemon registrations and serves the dashboard.
@@ -62,6 +74,7 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/execute", s.handleExecute)
 	mux.HandleFunc("/api/history", s.handleHistory)
 	mux.HandleFunc("/stream/daemon", s.handleStreamDaemon)
+	mux.HandleFunc("/stream/exec", s.handleStreamExec)
 
 	distFS, err := fs.Sub(fleetui.DistFS, "dist")
 	if err != nil {
@@ -143,12 +156,15 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 			if err := conn.ReadJSON(&msg); err != nil {
 				break
 			}
-			if msg.Type == "log" {
+			switch msg.Type {
+			case "log":
 				select {
 				case node.StreamChan <- msg.Data:
 				default:
 					// drop if channel is full
 				}
+			case "exec_output", "exec_prompt", "exec_result", "exec_error":
+				s.relayExec(msg)
 			}
 		}
 	}()
@@ -175,6 +191,186 @@ func (s *Server) unregisterNode(id string) {
 		delete(s.nodes, id)
 		fmt.Printf("Node unregistered: %s\n", id)
 	}
+}
+
+// streamConn is the hub-side half of a relayed exec stream. send feeds a
+// single writer pump; terminal is closed once the stream finishes (or the
+// client disconnects), which also closes send so the pump drains and exits.
+type streamConn struct {
+	send     chan []byte
+	terminal chan struct{}
+	once     sync.Once
+}
+
+func newStreamConn() *streamConn {
+	return &streamConn{
+		send:     make(chan []byte, 128),
+		terminal: make(chan struct{}),
+	}
+}
+
+func (sc *streamConn) close() {
+	sc.once.Do(func() {
+		close(sc.terminal)
+		close(sc.send)
+	})
+}
+
+func (s *Server) registerStream(id string, sc *streamConn) {
+	s.streamMu.Lock()
+	defer s.streamMu.Unlock()
+	s.streams[id] = sc
+}
+
+func (s *Server) unregisterStream(id string) {
+	s.streamMu.Lock()
+	defer s.streamMu.Unlock()
+	delete(s.streams, id)
+}
+
+// relayExec forwards a daemon→hub exec event to the remote client that owns
+// the stream. The message Data is already in the client-facing wire format,
+// so it is passed through verbatim. Terminal events finish the stream.
+func (s *Server) relayExec(msg FleetMsg) {
+	s.streamMu.Lock()
+	sc := s.streams[msg.ID]
+	s.streamMu.Unlock()
+	if sc == nil {
+		return
+	}
+	if msg.Type == "exec_result" || msg.Type == "exec_error" {
+		select {
+		case sc.send <- []byte(msg.Data):
+		default:
+		}
+		sc.close()
+		return
+	}
+	select {
+	case sc.send <- []byte(msg.Data):
+	default:
+		// drop slow consumers
+	}
+}
+
+// hubRelayMsg is the client-facing wire frame on the hub's /stream/exec
+// endpoint. It intentionally mirrors the local daemon /stream/exec protocol.
+type hubRelayMsg struct {
+	Type    string          `json:"type"`
+	Data    string          `json:"data,omitempty"`
+	Request json.RawMessage `json:"request,omitempty"`
+}
+
+// handleStreamExec lets a remote client stream a command to a registered
+// daemon. The client opens a WebSocket, sends a start frame carrying the
+// ExecRequest, and then receives output/prompt/result events while sending
+// answer/stop frames. The hub relays everything over the target daemon's
+// tunnel.
+func (s *Server) handleStreamExec(w http.ResponseWriter, r *http.Request) {
+	if s.token != "" {
+		tok := r.URL.Query().Get("token")
+		if tok == "" {
+			if a := r.Header.Get("Authorization"); strings.HasPrefix(a, "Bearer ") {
+				tok = strings.TrimPrefix(a, "Bearer ")
+			}
+		}
+		if tok != s.token {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+	}
+
+	nodeID := r.URL.Query().Get("id")
+	s.mu.RLock()
+	var node *Node
+	if nodeID != "" {
+		node = s.nodes[nodeID]
+	} else {
+		for _, n := range s.nodes {
+			node = n
+			break
+		}
+	}
+	s.mu.RUnlock()
+	if node == nil {
+		http.Error(w, "no daemon available", http.StatusServiceUnavailable)
+		return
+	}
+
+	client, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		fmt.Printf("Exec stream WebSocket upgrade failed: %v\n", err)
+		return
+	}
+
+	// First frame must be a start that carries the ExecRequest.
+	var start hubRelayMsg
+	if err := client.ReadJSON(&start); err != nil || start.Type != "start" || len(start.Request) == 0 {
+		client.WriteJSON(hubRelayMsg{Type: "error", Data: "expected a start frame with a request"})
+		client.Close()
+		return
+	}
+
+	sc := newStreamConn()
+	streamID := fmt.Sprintf("exec-%d", time.Now().UnixNano())
+	s.registerStream(streamID, sc)
+	defer s.unregisterStream(streamID)
+
+	if err := node.SendMessage(FleetMsg{Type: "exec_start", ID: streamID, Request: start.Request}); err != nil {
+		select {
+		case sc.send <- mustMarshal(hubRelayMsg{Type: "error", Data: "daemon unavailable: " + err.Error()}):
+		default:
+		}
+		sc.close()
+		client.Close()
+		return
+	}
+
+	// Writer pump: drains relayed events to the client.
+	writerDone := make(chan struct{})
+	go func() {
+		defer close(writerDone)
+		for b := range sc.send {
+			client.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			if err := client.WriteMessage(websocket.TextMessage, b); err != nil {
+				return
+			}
+		}
+	}()
+
+	// Forward client frames (answer/stop) to the daemon. Closing the client
+	// stops the remote run.
+	go func() {
+		for {
+			var m hubRelayMsg
+			if err := client.ReadJSON(&m); err != nil {
+				node.SendMessage(FleetMsg{Type: "exec_stop", ID: streamID})
+				sc.close()
+				return
+			}
+			switch m.Type {
+			case "answer":
+				node.SendMessage(FleetMsg{Type: "exec_answer", ID: streamID, Data: m.Data})
+			case "stop":
+				node.SendMessage(FleetMsg{Type: "exec_stop", ID: streamID})
+				sc.close()
+				return
+			}
+		}
+	}()
+
+	// Wait for the daemon to finish the stream.
+	<-sc.terminal
+	<-writerDone
+	client.Close()
+}
+
+func mustMarshal(v interface{}) []byte {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return []byte(`{"type":"error","data":"marshal failed"}`)
+	}
+	return b
 }
 
 func (s *Server) handleStreamDaemon(w http.ResponseWriter, r *http.Request) {

@@ -13,12 +13,34 @@ type NodeInfo struct {
 	ID       string `json:"id"`
 	Hostname string `json:"hostname"`
 	OS       string `json:"os"`
-	Arch       string `json:"arch"`
+	Arch     string `json:"arch"`
 }
 
+// FleetMsg is a message exchanged over the hub↔daemon tunnel.
+// Type carriers: "log" (daemon→hub), registration, and the relayed-exec
+// family: exec_start / exec_answer / exec_stop (hub→daemon) and
+// exec_output / exec_prompt / exec_result / exec_error (daemon→hub).
+// For relayed events, Data holds the serialized ExecEvent JSON sent back to
+// the remote client; the hub forwards it verbatim.
 type FleetMsg struct {
-	Type string `json:"type"`
-	Data string `json:"data"`
+	Type    string          `json:"type"`
+	ID      string          `json:"id,omitempty"`
+	Data    string          `json:"data"`
+	Request json.RawMessage `json:"request,omitempty"`
+}
+
+// ExecEvent mirrors the streaming protocol a /stream/exec client receives,
+// transported over the tunnel as a FleetMsg.Data payload. Each daemon→hub
+// relay maps a FleetMsg.Type to an ExecEvent.Type: exec_output→output,
+// exec_prompt→prompt, exec_result→result, exec_error→error.
+type ExecEvent struct {
+	Type     string          `json:"type"`
+	Stream   string          `json:"stream,omitempty"`
+	Data     string          `json:"data,omitempty"`
+	Prompt   string          `json:"prompt,omitempty"`
+	Awaiting bool            `json:"awaiting,omitempty"`
+	Response json.RawMessage `json:"response,omitempty"`
+	Error    string          `json:"error,omitempty"`
 }
 
 // Node represents a connected daemon.

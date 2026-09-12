@@ -208,3 +208,22 @@ Client disconnects also cancel the run. If the client falls too far behind,
 output chunks are dropped (sliding window) so a slow consumer cannot stall
 command execution; the final `result` always carries the complete sanitized
 output.
+
+### Remote (`/stream/exec` on the fleet hub)
+
+The fleet hub exposes the same protocol at `ws://<hub>/stream/exec` so a client
+can run a command on a registered daemon through its outbound tunnel:
+
+- Authenticate with `?token=<hub-token>` (or `Authorization: Bearer <hub-token>`).
+- Select a target with `?id=<daemon-id>` (per `/api/nodes`); if omitted the hub
+  picks any registered daemon.
+- The message flow is identical to a local `/stream/exec`: send `start`, receive
+  `output`/`prompt`/`result`, send `answer`/`stop`. The hub relays each frame
+  over the daemon's registration tunnel, so no inbound ports are needed on the
+  worker. `answer` and `stop` are forwarded to the live run; a client disconnect
+  cancels it.
+
+Internally, relayed runs use `FleetMsg` frames on the hub↔daemon tunnel: the hub
+sends `exec_start` (with the `request`), `exec_answer`, and `exec_stop`; the
+daemon answers with `exec_output`/`exec_prompt`/`exec_result`/`exec_error`,
+each carrying the client-facing event JSON in `data`.
