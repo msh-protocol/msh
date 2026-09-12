@@ -54,6 +54,9 @@ func (s *MshServer) StartStdio() error {
 		mcp.WithString("session_id",
 			mcp.Description("Session ID to persist CWD and env vars across multiple calls"),
 		),
+		mcp.WithString("prompt_answer",
+			mcp.Description("Answer to feed to an interactive prompt (e.g., 'y'), single use per call"),
+		),
 	)
 
 	srv.AddTool(tool, s.handleExecuteCommand)
@@ -91,6 +94,9 @@ func (s *MshServer) handleExecuteCommand(ctx context.Context, request mcp.CallTo
 	}
 	if redact, ok := argsMap["redact_secrets"].(bool); ok {
 		req.RedactSecrets = &redact
+	}
+	if answer, ok := argsMap["prompt_answer"].(string); ok && answer != "" {
+		req.PromptAnswers = []string{answer}
 	}
 	
 	sessionID, _ := argsMap["session_id"].(string)

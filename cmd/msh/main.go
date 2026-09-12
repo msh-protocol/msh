@@ -27,6 +27,7 @@ var (
 	flagPty      bool
 	flagEnvFile  string
 	flagNoRedact bool
+	flagAnswers  []string
 )
 
 var rootCmd = &cobra.Command{
@@ -61,6 +62,7 @@ and returned as a structured JSON payload.`,
 	execCmd.Flags().BoolVar(&flagPty, "pty", false, "Run command in a pseudo-terminal (PTY)")
 	execCmd.Flags().StringVar(&flagEnvFile, "env-file", "", "Path to a .env file to load before execution")
 	execCmd.Flags().BoolVar(&flagNoRedact, "no-redact", false, "Disable secret redaction of command output")
+	execCmd.Flags().StringSliceVar(&flagAnswers, "answer", nil, "Answer to feed an interactive prompt (repeatable, used in order when prompts are detected)")
 
 	// --- version command ---
 	versionCmd := &cobra.Command{
@@ -108,6 +110,7 @@ func runExec(cmd *cobra.Command, args []string) error {
 		UsePty:         flagPty,
 		EnvFile:        flagEnvFile,
 		RedactSecrets:  redactFlag(),
+		PromptAnswers:  flagAnswers,
 	}
 
 	// Execute

@@ -21,15 +21,15 @@ func NewDockerEngine() *DockerEngine {
 	return &DockerEngine{}
 }
 
-func (d *DockerEngine) Run(ctx context.Context, req protocol.ExecRequest, cwd string, env []string) (string, string, int, error) {
+func (d *DockerEngine) Run(ctx context.Context, req protocol.ExecRequest, cwd string, env []string) (string, string, int, int, error) {
 	if req.DockerImage == "" {
-		return "", "", -1, fmt.Errorf("docker_image is required for the docker engine")
+		return "", "", -1, 0, fmt.Errorf("docker_image is required for the docker engine")
 	}
 
 	// Verify docker is installed
 	dockerPath, err := exec.LookPath("docker")
 	if err != nil {
-		return "", "", -1, fmt.Errorf("docker executable not found in PATH")
+		return "", "", -1, 0, fmt.Errorf("docker executable not found in PATH")
 	}
 
 	// Build the docker command arguments
@@ -67,7 +67,7 @@ func (d *DockerEngine) Run(ctx context.Context, req protocol.ExecRequest, cwd st
 	if req.UsePty {
 		ptmx, err := pty.New()
 		if err != nil {
-			return "", "", -1, err
+			return "", "", -1, 0, err
 		}
 		defer ptmx.Close()
 		
@@ -75,7 +75,7 @@ func (d *DockerEngine) Run(ctx context.Context, req protocol.ExecRequest, cwd st
 		
 		err = ptyCmd.Start()
 		if err != nil {
-			return "", "", -1, err
+			return "", "", -1, 0, err
 		}
 		
 		done := make(chan struct{})
@@ -100,7 +100,7 @@ func (d *DockerEngine) Run(ctx context.Context, req protocol.ExecRequest, cwd st
 			}
 		}
 
-		return stdoutBuf.String(), "", exitCode, err
+		return stdoutBuf.String(), "", exitCode, 0, err
 	}
 
 	cmd := exec.CommandContext(ctx, dockerPath, args...)
@@ -118,5 +118,5 @@ func (d *DockerEngine) Run(ctx context.Context, req protocol.ExecRequest, cwd st
 		}
 	}
 
-	return stdoutBuf.String(), stderrBuf.String(), exitCode, err
+	return stdoutBuf.String(), stderrBuf.String(), exitCode, 0, err
 }

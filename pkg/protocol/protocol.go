@@ -78,6 +78,13 @@ type ExecRequest struct {
 	// Defaults to true when nil.
 	RedactSecrets *bool `json:"redact_secrets,omitempty"`
 
+	// PromptAnswers provides answers to interactive prompts encountered
+	// during execution (e.g., "[y/N]", "password:"). When a prompt is
+	// detected, msh feeds the next answer to the process stdin instead of
+	// blocking. Execution is only marked "blocked" if prompts remain
+	// unanswered after all answers are consumed.
+	PromptAnswers []string `json:"prompt_answers,omitempty"`
+
 	// Engine specifies the execution engine to use (e.g., "subprocess", "docker", "kubernetes").
 	// Defaults to "subprocess" if empty.
 	Engine string `json:"engine,omitempty"`
@@ -140,6 +147,10 @@ type ExecResponse struct {
 	// detected during execution (e.g., "[y/N]", "password:").
 	// Only set when Status is "blocked".
 	PromptDetected string `json:"prompt_detected,omitempty"`
+
+	// AnswersUsed is the number of PromptAnswers fed to the process
+	// before execution completed. Zero when no answers were provided.
+	AnswersUsed int `json:"answers_used,omitempty"`
 
 	// Error contains a human-readable error description when the
 	// command fails to execute (e.g., binary not found, permission denied).
