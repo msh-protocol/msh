@@ -100,14 +100,13 @@ func (e *Executor) ExecuteStreaming(ctx context.Context, req protocol.ExecReques
 
 // selectEngine picks the execution engine for a request.
 func selectEngine(req protocol.ExecRequest) Engine {
-	switch req.Engine {
-	case "docker":
+	if req.Engine == "docker" || req.DockerImage != "" {
 		return NewDockerEngine()
-	case "kubernetes":
-		return NewKubernetesEngine()
-	default:
-		return NewSubprocessEngine()
 	}
+	if req.Engine == "kubernetes" || req.KubernetesNamespace != "" {
+		return NewKubernetesEngine()
+	}
+	return NewSubprocessEngine()
 }
 
 // prep carries everything Execute / ExecuteStreaming resolve before the

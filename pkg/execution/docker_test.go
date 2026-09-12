@@ -79,6 +79,7 @@ func TestDockerAnswersPrompt(t *testing.T) {
 	}
 
 	req := protocol.ExecRequest{
+		Engine:        "docker",
 		Command:       "printf 'Proceed? [y/N] '; read a; printf 'Continue? [y/N] '; read b; echo first=$a second=$b",
 		DockerImage:   "alpine:latest",
 		PromptAnswers: []string{"yes", "no"},
