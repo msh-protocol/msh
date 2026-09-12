@@ -51,15 +51,29 @@ The dashboard features a **Multi-Terminal Grid** allowing operators to supervise
   - **Buffer Clear & Close**: Clear output buffers individually or dismiss tiles.
   - **Live Indicators**: Real-time pulsing status badges and log line counters for each agent.
 
-### Execution History
+### Execution History & One-Click Replay
 The **History** tab shows a real-time log of every command executed across the
 fleet (the hub persists the request/response JSON of each exec). The list is
 paginated (`/api/history?limit=&offset=`), and clicking a row expands a **replay**
 view showing the full stored request and response payloads.
 
+- **One-Click Replay on Node**: Any historical `ExecRequest` can be immediately re-dispatched to any active daemon. Select a target daemon from the dropdown in the replay bar and click **Re-run on Node ↻**. The dashboard seamlessly switches to the Multi-Terminal Grid, opens or focuses the live terminal tile for that daemon, and streams execution live.
+
 `GET /api/history` accepts `limit` (default 50, max 200) and `offset` query
 parameters, always newest-first, and reports the total record count in the
 `X-Total-Count` response header so the UI can render page controls.
+
+### Human-in-the-Loop (HITL) Interactive Prompting
+When commands running on remote worker daemons hit interactive prompts (e.g. confirmations like `[y/N]`, password entries, or tool questions), `msh` detects the prompt and emits an `awaiting` prompt frame over the `/stream/exec` tunnel:
+
+```json
+{"type": "prompt", "prompt": "Do you want to continue? [y/N]", "awaiting": true}
+```
+
+The Fleet UI intercepts this frame mid-stream and highlights the terminal tile with a glowing amber **Human-in-the-Loop Required** banner:
+- **Quick Action Buttons**: Instant one-click `[ Yes (y) ]` and `[ No (n) ]` buttons for rapid confirmation.
+- **Custom Input**: Text field for arbitrary prompt responses, passwords, or custom inputs.
+- **Bi-directional Pipe**: Submitting an answer transmits `{"type": "answer", "data": "..."}` over the WebSocket directly into the remote process's standard input (`stdin`), unblocking execution in real-time.
 
 ### Live Metrics & Analytics
 The **Metrics** tab displays live performance and fleet health metrics computed directly from active registrations and the execution database via `GET /api/metrics`:

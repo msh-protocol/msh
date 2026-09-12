@@ -198,13 +198,15 @@ func (s *Server) unregisterNode(id string) {
 // single writer pump; terminal is closed once the stream finishes (or the
 // client disconnects), which also closes send so the pump drains and exits.
 type streamConn struct {
+	req      protocol.ExecRequest
 	send     chan []byte
 	terminal chan struct{}
 	once     sync.Once
 }
 
-func newStreamConn() *streamConn {
+func newStreamConn(req protocol.ExecRequest) *streamConn {
 	return &streamConn{
+		req:      req,
 		send:     make(chan []byte, 128),
 		terminal: make(chan struct{}),
 	}
@@ -243,6 +245,30 @@ func (s *Server) relayExec(msg FleetMsg) {
 		select {
 		case sc.send <- []byte(msg.Data):
 		default:
+		}
+		if s.db != nil {
+			if msg.Type == "exec_result" {
+				var ev ExecEvent
+				if err := json.Unmarshal([]byte(msg.Data), &ev); err == nil && len(ev.Response) > 0 {
+					var resp protocol.ExecResponse
+					if err := json.Unmarshal(ev.Response, &resp); err == nil {
+						_ = s.db.SaveExecution(sc.req, resp)
+					}
+				}
+			} else if msg.Type == "exec_error" {
+				var ev ExecEvent
+				_ = json.Unmarshal([]byte(msg.Data), &ev)
+				errMsg := ev.Error
+				if errMsg == "" {
+					errMsg = "streaming execution error"
+				}
+				resp := protocol.ExecResponse{
+					Status:   protocol.StatusError,
+					Stderr:   errMsg,
+					ExitCode: -1,
+				}
+				_ = s.db.SaveExecution(sc.req, resp)
+			}
 		}
 		sc.close()
 		return
@@ -312,7 +338,12 @@ func (s *Server) handleStreamExec(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sc := newStreamConn()
+	var execReq protocol.ExecRequest
+	if parsed, err := protocol.ParseExecRequest(start.Request); err == nil {
+		execReq = *parsed
+	}
+
+	sc := newStreamConn(execReq)
 	streamID := fmt.Sprintf("exec-%d", time.Now().UnixNano())
 	s.registerStream(streamID, sc)
 	defer s.unregisterStream(streamID)
