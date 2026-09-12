@@ -27,6 +27,7 @@ func init() {
 	wrapCmd.Flags().BoolVar(&flagPty, "pty", false, "Run command in a pseudo-terminal (PTY)")
 	wrapCmd.Flags().StringVar(&flagEnvFile, "env-file", "", "Path to a .env file to load before execution")
 	wrapCmd.Flags().BoolVar(&flagNoRedact, "no-redact", false, "Disable secret redaction of command output")
+	wrapCmd.Flags().StringSliceVar(&flagAnswers, "answer", nil, "Answer to feed an interactive prompt (repeatable, used in order when prompts are detected)")
 }
 
 func runWrap(cmd *cobra.Command, args []string) {
@@ -56,6 +57,7 @@ func runWrap(cmd *cobra.Command, args []string) {
 		UsePty:         flagPty,
 		EnvFile:        flagEnvFile,
 		RedactSecrets:  redactFlag(),
+		PromptAnswers:  flagAnswers,
 	}
 
 	// Execute

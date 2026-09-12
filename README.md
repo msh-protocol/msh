@@ -13,7 +13,7 @@ When an AI agent runs `npm run build`, it usually receives a raw stream of ANSI 
 - **Sanitizes Output** — Strips all ANSI codes and progress bars.
 - **Prevents Context Blowouts** — Automatically truncates massive error dumps (keeps first 100 + last 100 lines).
 - **Secret Redaction** — Automatically masks API keys and tokens in command output so secrets never leak into the model's context window.
-- **Detects Prompts** — Kills the process and returns `"status": "blocked"` if a `[y/N]` or password prompt appears.
+- **Answers Prompts** — Detects `[y/N]` and password prompts in real time and feeds your answers back to the process, so interactive commands complete instead of hanging. Pass answers with `--answer "y"` (repeatable) or `"prompt_answers": ["y"]`. Only when answers run out does msh return `"status": "blocked"`.
 - **True Terminal Emulation** — Supports executing commands inside a Pseudo-Terminal (PTY) via `use_pty: true` for tools that demand a TTY.
 - **Network Daemon** — Run `msh serve` to expose an HTTP REST API, allowing remote agents to manage stateful execution sessions over the network.
 - **MCP Server** — Run `msh mcp` to natively expose the runtime to any Model Context Protocol compatible AI IDE (like Claude Desktop or Cursor).

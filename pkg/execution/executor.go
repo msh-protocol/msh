@@ -139,12 +139,13 @@ func (e *Executor) Execute(req protocol.ExecRequest) protocol.ExecResponse {
 	defer cancel()
 
 	// Run command via engine
-	stdoutStr, stderrStr, exitCode, err := engine.Run(ctx, req, cwd, env)
+	stdoutStr, stderrStr, exitCode, answersUsed, err := engine.Run(ctx, req, cwd, env)
 	
 	duration := time.Since(startTime)
 
 	// Populate the response (SessionID and Cwd were set earlier)
 	resp.DurationMs = duration.Milliseconds()
+	resp.AnswersUsed = answersUsed
 
 	// Determine status and exit code
 	if ctx.Err() == context.DeadlineExceeded {
@@ -180,14 +181,18 @@ func (e *Executor) Execute(req protocol.ExecRequest) protocol.ExecResponse {
 		resp.Hooks = redactHooks(resp.Hooks, secrets)
 	}
 
-	// Check for interactive prompts in the output
-	for _, line := range strings.Split(resp.Stdout+"\n"+resp.Stderr, "\n") {
-		if prompt, detected := sanitize.DetectPrompt(line); detected {
-			resp.PromptDetected = prompt
-			if resp.Status == protocol.StatusError || resp.Status == protocol.StatusTimeout {
-				resp.Status = protocol.StatusBlocked
+	// Check for interactive prompts in the output. Skip the blocked upgrade
+	// when answers were already fed to the process — the prompt was consumed,
+	// so the run is a legitimate success/error, not a hang.
+	if resp.AnswersUsed == 0 {
+		for _, line := range strings.Split(resp.Stdout+"\n"+resp.Stderr, "\n") {
+			if prompt, detected := sanitize.DetectPrompt(line); detected {
+				resp.PromptDetected = prompt
+				if resp.Status == protocol.StatusError || resp.Status == protocol.StatusTimeout {
+					resp.Status = protocol.StatusBlocked
+				}
+				break
 			}
-			break
 		}
 	}
 

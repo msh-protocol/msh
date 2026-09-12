@@ -22,7 +22,8 @@ An agent sends an `ExecRequest` to execute a command.
   "max_output_lines": 100,
   "detect_files": true,
   "use_pty": false,
-  "redact_secrets": true
+  "redact_secrets": true,
+  "prompt_answers": ["y"]
 }
 ```
 
@@ -40,6 +41,7 @@ An agent sends an `ExecRequest` to execute a command.
 | `detect_files` | boolean | ❌ | `false` | Enable filesystem change detection |
 | `use_pty` | boolean | ❌ | `false` | Run command inside a pseudo-terminal |
 | `redact_secrets` | boolean | ❌ | `true` | Mask secrets in output (see Secret Redaction) |
+| `prompt_answers` | string[] | ❌ | `[]` | Answers fed to interactive prompts at runtime, in order (e.g. `["y"]` to accept a `[y/N]` prompt) |
 | `engine` | string | ❌ | `subprocess` | Execution engine: `subprocess`, `docker`, `kubernetes` |
 | `docker_image` | string | ❌ | — | Image to use when `engine: "docker"` or `"kubernetes"` |
 | `kubernetes_namespace` | string | ❌ | — | Namespace to use when `engine: "kubernetes"` |
@@ -76,6 +78,7 @@ The msh runtime returns an `ExecResponse` after command execution.
 | `files_changed` | string[] | ❌ | Files added/modified/deleted (only when `detect_files: true`) |
 | `duration_ms` | integer | ✅ | Wall-clock execution time in milliseconds |
 | `prompt_detected` | string | ❌ | Interactive prompt text (only when `status: "blocked"`) |
+| `answers_used` | integer | ❌ | Number of `prompt_answers` consumed before execution completed |
 | `error` | string | ❌ | System-level error description (binary not found, permission denied) |
 
 ## Status Codes
@@ -108,6 +111,8 @@ All output returned in `stdout` and `stderr` is processed through the msh saniti
    - `Are you sure`, `Press enter to continue`
    - `Ok to proceed?`, `Do you want to install`
 
+When `prompt_answers` are provided, the subprocess engine streams output in real time and feeds the next answer (plus a newline) to the process stdin the moment a prompt is detected — including prompts with no trailing newline. The run is only marked `blocked` if a prompt remains after all answers are consumed; each consumed answer is reported via `answers_used`. Only the subprocess engine answers prompts; docker/kubernetes engines report them but cannot feed input.
+
 4. **Secret Redaction** — Secrets are masked from output before it reaches the agent:
    - **Exact-value masking** — the concrete values of environment secrets are replaced with `[REDACTED:<name>]`. Only variables whose names look sensitive (`TOKEN`, `KEY`, `SECRET`, `PASSWORD`, `PASS`, `CREDENTIAL`, `PRIVATE`, `AUTH`) are matched, and values shorter than 4 characters or containing whitespace are ignored to avoid corrupting ordinary text.
    - **Shape-based masking** — well-known token formats are masked even without a matching env var: AWS access keys, GitHub tokens (`ghp_*`, `github_pat_*`), Slack tokens (`xox*`), OpenAI/Anthropic/Stripe/Google/npm keys, JWTs, and PEM private key blocks.
@@ -130,7 +135,7 @@ import subprocess
 import json
 
 result = subprocess.run(
-    ["msh", "exec", "npm run build", "--timeout", "60s"],
+    ["msh", "exec", "npm install --yes", "--answer", "y"],
     capture_output=True, text=True
 )
 
@@ -138,6 +143,7 @@ response = json.loads(result.stdout)
 
 if response["status"] == "success":
     print(f"Build succeeded in {response['duration_ms']}ms")
+    print(f"Answers consumed: {response.get('answers_used', 0)}")
     print(f"Files changed: {response.get('files_changed', [])}")
 elif response["status"] == "timeout":
     print(f"Build timed out: {response['error']}")

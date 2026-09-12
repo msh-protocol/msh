@@ -21,14 +21,14 @@ func NewKubernetesEngine() *KubernetesEngine {
 	return &KubernetesEngine{}
 }
 
-func (k *KubernetesEngine) Run(ctx context.Context, req protocol.ExecRequest, cwd string, env []string) (string, string, int, error) {
+func (k *KubernetesEngine) Run(ctx context.Context, req protocol.ExecRequest, cwd string, env []string) (string, string, int, int, error) {
 	if req.DockerImage == "" {
-		return "", "", -1, fmt.Errorf("docker_image is required for the kubernetes engine")
+		return "", "", -1, 0, fmt.Errorf("docker_image is required for the kubernetes engine")
 	}
 
 	kubectlPath, err := exec.LookPath("kubectl")
 	if err != nil {
-		return "", "", -1, fmt.Errorf("kubectl executable not found in PATH")
+		return "", "", -1, 0, fmt.Errorf("kubectl executable not found in PATH")
 	}
 
 	// Generate a unique pod name based on the session ID or a timestamp
@@ -69,7 +69,7 @@ func (k *KubernetesEngine) Run(ctx context.Context, req protocol.ExecRequest, cw
 	if req.UsePty {
 		ptmx, err := pty.New()
 		if err != nil {
-			return "", "", -1, err
+			return "", "", -1, 0, err
 		}
 		defer ptmx.Close()
 		
@@ -77,7 +77,7 @@ func (k *KubernetesEngine) Run(ctx context.Context, req protocol.ExecRequest, cw
 		
 		err = ptyCmd.Start()
 		if err != nil {
-			return "", "", -1, err
+			return "", "", -1, 0, err
 		}
 		
 		done := make(chan struct{})
@@ -108,7 +108,7 @@ func (k *KubernetesEngine) Run(ctx context.Context, req protocol.ExecRequest, cw
 			out = strings.ReplaceAll(out, "pod \""+podName+"\" deleted", "")
 		}
 
-		return out, "", exitCode, err
+		return out, "", exitCode, 0, err
 	}
 
 	cmd := exec.CommandContext(ctx, kubectlPath, args...)
@@ -132,5 +132,5 @@ func (k *KubernetesEngine) Run(ctx context.Context, req protocol.ExecRequest, cw
 		out = strings.ReplaceAll(out, "pod \""+podName+"\" deleted", "")
 	}
 
-	return out, stderrBuf.String(), exitCode, err
+	return out, stderrBuf.String(), exitCode, 0, err
 }
