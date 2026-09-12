@@ -41,11 +41,11 @@ jobs:
 
       - name: Run Go Tests
         run: go test -v -race ./...
-        if: matrix.os != 'windows'
+        if: runner.os != 'Windows'
 
       - name: Run Go Tests (Windows)
         run: go test -v ./...
-        if: matrix.os == 'windows'
+        if: runner.os == 'Windows'
 
       - name: Build CLI Binary
         run: go build -v ./cmd/msh
