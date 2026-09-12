@@ -21,6 +21,10 @@ func dockerAvailable(t *testing.T) bool {
 // TestBuildDockerArgs verifies the docker command is assembled correctly for
 // both interactive (prompt answering) and plain modes.
 func TestBuildDockerArgs(t *testing.T) {
+	if !dockerAvailable(t) {
+		t.Skip("docker executable not available")
+	}
+
 	req := protocol.ExecRequest{
 		Command:        "echo hi && read -p 'go? [y/N] ' x",
 		DockerImage:    "alpine:latest",
@@ -79,6 +83,7 @@ func TestDockerAnswersPrompt(t *testing.T) {
 	}
 
 	req := protocol.ExecRequest{
+		Engine:        "docker",
 		Command:       "printf 'Proceed? [y/N] '; read a; printf 'Continue? [y/N] '; read b; echo first=$a second=$b",
 		DockerImage:   "alpine:latest",
 		PromptAnswers: []string{"yes", "no"},

@@ -146,11 +146,7 @@ func (k *KubernetesEngine) runInteractive(ctx context.Context, req protocol.Exec
 		_, _ = io.Copy(sinkOf(out, sink, "stderr"), stderrPipe)
 	}()
 
-	err = cmd.Wait()
-	if stdin != nil {
-		stdin.Close()
-	}
-
+	// Drain remaining buffered output before cmd.Wait() closes the pipes (per os/exec doc).
 	done := make(chan struct{})
 	go func() {
 		wg.Wait()
@@ -158,7 +154,14 @@ func (k *KubernetesEngine) runInteractive(ctx context.Context, req protocol.Exec
 	}()
 	select {
 	case <-done:
+		err = cmd.Wait()
 	case <-time.After(2 * time.Second):
+		err = cmd.Wait()
+		<-done
+	}
+
+	if stdin != nil {
+		_ = stdin.Close()
 	}
 
 	answersUsed := 0
@@ -191,7 +194,13 @@ func (k *KubernetesEngine) runPTY(ctx context.Context, req protocol.ExecRequest,
 	if err != nil {
 		return "", "", -1, 0, err
 	}
-	defer ptmx.Close()
+	var closeOnce sync.Once
+	closePtmx := func() {
+		closeOnce.Do(func() {
+			_ = ptmx.Close()
+		})
+	}
+	defer closePtmx()
 
 	ptyCmd := ptmx.CommandContext(ctx, argv[0], argv[1:]...)
 	if err := ptyCmd.Start(); err != nil {
@@ -213,7 +222,9 @@ func (k *KubernetesEngine) runPTY(ctx context.Context, req protocol.ExecRequest,
 
 	select {
 	case <-done:
-	case <-time.After(100 * time.Millisecond):
+	case <-time.After(2 * time.Second):
+		closePtmx()
+		<-done
 	}
 
 	exitCode := 0

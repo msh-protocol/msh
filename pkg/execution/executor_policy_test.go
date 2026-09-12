@@ -3,8 +3,10 @@ package execution
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/msh-protocol/msh/pkg/protocol"
 )
@@ -29,10 +31,15 @@ func TestExecutePolicyAnswersPrompt(t *testing.T) {
   - match: "continue.*\\[y/N\\]"
     answer: "y"
 `)
-	// The batch file lives in the session cwd so `set /p` resolves it.
-	cmd := writeBatch(t, "@echo off\r\nset /p ans=Do you want to continue? [y/N]: \r\necho got:%ans%\r\n")
-	if err := os.Rename(cmd, filepath.Join(dir, "prompt.cmd")); err != nil {
-		t.Fatal(err)
+
+	cmdStr := `printf 'Do you want to continue? [y/N]: '; read ans; echo "got:$ans"`
+	if runtime.GOOS == "windows" {
+		cmd := writeBatch(t, "@echo off\r\nset /p ans=Do you want to continue? [y/N]: \r\necho got:%ans%\r\n")
+		target := filepath.Join(dir, "prompt.cmd")
+		if err := os.Rename(cmd, target); err != nil {
+			t.Fatal(err)
+		}
+		cmdStr = target
 	}
 
 	session, err := NewSession(dir)
@@ -41,7 +48,7 @@ func TestExecutePolicyAnswersPrompt(t *testing.T) {
 	}
 
 	req := protocol.ExecRequest{
-		Command:       filepath.Join(dir, "prompt.cmd"),
+		Command:        cmdStr,
 		MaxOutputLines: 10,
 	}
 
@@ -49,7 +56,7 @@ func TestExecutePolicyAnswersPrompt(t *testing.T) {
 	resp := executor.Execute(req)
 
 	if resp.AnswersUsed != 1 {
-		t.Fatalf("expected answers_used=1 from policy, got %d", resp.AnswersUsed)
+		t.Fatalf("expected answers_used=1 from policy, got %d (stdout: %q, stderr: %q)", resp.AnswersUsed, resp.Stdout, resp.Stderr)
 	}
 	if resp.Status == protocol.StatusBlocked {
 		t.Fatalf("expected run to complete, got blocked on %q", resp.PromptDetected)
@@ -59,7 +66,7 @@ func TestExecutePolicyAnswersPrompt(t *testing.T) {
 	}
 }
 
-// TestExecutePolicyWithoutMatchVerifiesUnmatched prompts still block when a
+// TestExecutePolicyWithoutMatch verifies unmatched prompts still block when a
 // policy file exists but has no matching rule.
 func TestExecutePolicyWithoutMatch(t *testing.T) {
 	dir := t.TempDir()
@@ -67,9 +74,15 @@ func TestExecutePolicyWithoutMatch(t *testing.T) {
   - match: "unrelated"
     answer: "n"
 `)
-	cmd := writeBatch(t, "@echo off\r\nset /p ans=Proceed? [y/N]: \r\necho got:%ans%\r\n")
-	if err := os.Rename(cmd, filepath.Join(dir, "prompt.cmd")); err != nil {
-		t.Fatal(err)
+
+	cmdStr := `printf 'Proceed? [y/N]: '; read ans; echo "got:$ans"`
+	if runtime.GOOS == "windows" {
+		cmd := writeBatch(t, "@echo off\r\nset /p ans=Proceed? [y/N]: \r\necho got:%ans%\r\n")
+		target := filepath.Join(dir, "prompt.cmd")
+		if err := os.Rename(cmd, target); err != nil {
+			t.Fatal(err)
+		}
+		cmdStr = target
 	}
 
 	session, err := NewSession(dir)
@@ -78,8 +91,8 @@ func TestExecutePolicyWithoutMatch(t *testing.T) {
 	}
 
 	req := protocol.ExecRequest{
-		Command:       filepath.Join(dir, "prompt.cmd"),
-		Timeout:       500 * 1000 * 1000, // 500ms; the command hangs for input
+		Command:        cmdStr,
+		Timeout:        500 * time.Millisecond,
 		MaxOutputLines: 10,
 	}
 
@@ -90,6 +103,6 @@ func TestExecutePolicyWithoutMatch(t *testing.T) {
 		t.Fatalf("expected answers_used=0, got %d", resp.AnswersUsed)
 	}
 	if resp.PromptDetected == "" {
-		t.Fatalf("expected unmatched prompt to be reported, got %q", resp.PromptDetected)
+		t.Fatalf("expected unmatched prompt to be reported, got %q (stdout: %q, stderr: %q)", resp.PromptDetected, resp.Stdout, resp.Stderr)
 	}
 }

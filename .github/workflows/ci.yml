@@ -31,20 +31,21 @@ jobs:
           node-version: '20'
 
       - name: Build Fleet UI
+        working-directory: fleet-ui
         run: |
-          npm --prefix fleet-ui install
-          npm --prefix fleet-ui run build
+          npm install
+          npm run build
 
       - name: Run Go Vet
         run: go vet ./...
 
       - name: Run Go Tests
         run: go test -v -race ./...
-        if: matrix.os != 'windows'
+        if: runner.os != 'Windows'
 
       - name: Run Go Tests (Windows)
         run: go test -v ./...
-        if: matrix.os == 'windows'
+        if: runner.os == 'Windows'
 
       - name: Build CLI Binary
         run: go build -v ./cmd/msh
