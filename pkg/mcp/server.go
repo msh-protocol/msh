@@ -48,6 +48,9 @@ func (s *MshServer) StartStdio() error {
 		mcp.WithBoolean("use_pty",
 			mcp.Description("Run command inside a pseudo-terminal (PTY)"),
 		),
+		mcp.WithBoolean("redact_secrets",
+			mcp.Description("Redact secrets from output (default true)"),
+		),
 		mcp.WithString("session_id",
 			mcp.Description("Session ID to persist CWD and env vars across multiple calls"),
 		),
@@ -85,6 +88,9 @@ func (s *MshServer) handleExecuteCommand(ctx context.Context, request mcp.CallTo
 	}
 	if usePty, ok := argsMap["use_pty"].(bool); ok {
 		req.UsePty = usePty
+	}
+	if redact, ok := argsMap["redact_secrets"].(bool); ok {
+		req.RedactSecrets = &redact
 	}
 	
 	sessionID, _ := argsMap["session_id"].(string)

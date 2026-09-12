@@ -26,6 +26,7 @@ var (
 	flagNoFiles  bool
 	flagPty      bool
 	flagEnvFile  string
+	flagNoRedact bool
 )
 
 var rootCmd = &cobra.Command{
@@ -59,6 +60,7 @@ and returned as a structured JSON payload.`,
 	execCmd.Flags().BoolVar(&flagNoFiles, "no-files", false, "Skip filesystem change detection")
 	execCmd.Flags().BoolVar(&flagPty, "pty", false, "Run command in a pseudo-terminal (PTY)")
 	execCmd.Flags().StringVar(&flagEnvFile, "env-file", "", "Path to a .env file to load before execution")
+	execCmd.Flags().BoolVar(&flagNoRedact, "no-redact", false, "Disable secret redaction of command output")
 
 	// --- version command ---
 	versionCmd := &cobra.Command{
@@ -105,6 +107,7 @@ func runExec(cmd *cobra.Command, args []string) error {
 		DetectFiles:    !flagNoFiles,
 		UsePty:         flagPty,
 		EnvFile:        flagEnvFile,
+		RedactSecrets:  redactFlag(),
 	}
 
 	// Execute
@@ -128,4 +131,15 @@ func runExec(cmd *cobra.Command, args []string) error {
 
 func parseTimeout(s string) (time.Duration, error) {
 	return time.ParseDuration(s)
+}
+
+// redactFlag returns the RedactSecrets pointer for an ExecRequest.
+// Redaction is on by default (nil); it is only disabled when --no-redact
+// is explicitly passed.
+func redactFlag() *bool {
+	if flagNoRedact {
+		f := false
+		return &f
+	}
+	return nil
 }

@@ -168,6 +168,18 @@ func (e *Executor) Execute(req protocol.ExecRequest) protocol.ExecResponse {
 	resp.Stderr = strings.TrimRight(stderrClean, "\n\r")
 	resp.Truncated = stdoutTruncated || stderrTruncated
 
+	// Apply secret redaction before returning output to the agent.
+	if req.RedactSecrets == nil || *req.RedactSecrets {
+		secrets := secretEnvMap(env)
+		var kinds []string
+		resp.Stdout, kinds = sanitize.RedactSecrets(resp.Stdout, secrets)
+		resp.Redacted = append(resp.Redacted, kinds...)
+		resp.Stderr, kinds = sanitize.RedactSecrets(resp.Stderr, secrets)
+		resp.Redacted = append(resp.Redacted, kinds...)
+		resp.Redacted = uniqueStrings(resp.Redacted)
+		resp.Hooks = redactHooks(resp.Hooks, secrets)
+	}
+
 	// Check for interactive prompts in the output
 	for _, line := range strings.Split(resp.Stdout+"\n"+resp.Stderr, "\n") {
 		if prompt, detected := sanitize.DetectPrompt(line); detected {
@@ -196,7 +208,61 @@ func (e *Executor) Execute(req protocol.ExecRequest) protocol.ExecResponse {
 		resp.Hooks = append(resp.Hooks, postResults...)
 	}
 
+	// Redact any secrets that leaked into post-hook output.
+	if req.RedactSecrets == nil || *req.RedactSecrets {
+		resp.Hooks = redactHooks(resp.Hooks, secretEnvMap(env))
+	}
+
 	return resp
+}
+
+// redactHooks masks secrets in pre/post hook output so hook results cannot
+// leak API keys or tokens into the response payload.
+func redactHooks(hooks []protocol.HookResult, secrets map[string]string) []protocol.HookResult {
+	for i := range hooks {
+		hooks[i].Stdout, _ = sanitize.RedactSecrets(hooks[i].Stdout, secrets)
+		hooks[i].Stderr, _ = sanitize.RedactSecrets(hooks[i].Stderr, secrets)
+	}
+	return hooks
+}
+
+// secretEnvMap extracts the values of environment variables whose names
+// look sensitive (contain TOKEN, KEY, SECRET, PASSWORD, CREDENTIAL, etc.)
+// so their exact values can be masked out of the output.
+func secretEnvMap(env []string) map[string]string {
+	secrets := make(map[string]string)
+	for _, entry := range env {
+		parts := splitEnvVar(entry)
+		if len(parts) == 2 && isSecretName(parts[0]) && parts[1] != "" {
+			secrets[parts[0]] = parts[1]
+		}
+	}
+	return secrets
+}
+
+// isSecretName reports whether an environment variable name looks sensitive.
+func isSecretName(name string) bool {
+	upper := strings.ToUpper(name)
+	for _, pattern := range []string{"TOKEN", "KEY", "SECRET", "PASSWORD", "PASSWD", "PASS", "CREDENTIAL", "PRIVATE", "AUTH"} {
+		if strings.Contains(upper, pattern) {
+			return true
+		}
+	}
+	return false
+}
+
+// uniqueStrings deduplicates a string slice while preserving order.
+func uniqueStrings(in []string) []string {
+	seen := make(map[string]struct{}, len(in))
+	out := make([]string, 0, len(in))
+	for _, s := range in {
+		if _, ok := seen[s]; ok {
+			continue
+		}
+		seen[s] = struct{}{}
+		out = append(out, s)
+	}
+	return out
 }
 
 // parseCdCommand extracts the target directory from a cd command.

@@ -71,6 +71,13 @@ type ExecRequest struct {
 	// NOTE: When true, Stderr will be merged into Stdout.
 	UsePty bool `json:"use_pty,omitempty"`
 
+	// RedactSecrets enables secret redaction on command output. When true,
+	// msh masks the exact values of known environment secrets and well-known
+	// token formats (AWS keys, GitHub tokens, JWTs, private key blocks, etc.)
+	// so they never leak into the agent's context window.
+	// Defaults to true when nil.
+	RedactSecrets *bool `json:"redact_secrets,omitempty"`
+
 	// Engine specifies the execution engine to use (e.g., "subprocess", "docker", "kubernetes").
 	// Defaults to "subprocess" if empty.
 	Engine string `json:"engine,omitempty"`
@@ -112,6 +119,11 @@ type ExecResponse struct {
 	// Truncated indicates whether stdout or stderr was truncated
 	// to stay within the MaxOutputLines limit.
 	Truncated bool `json:"truncated"`
+
+	// Redacted lists the secret names and token formats that were masked
+	// out of the output by secret redaction (e.g., "API_KEY", "aws", "jwt").
+	// Empty when redaction is disabled or nothing was masked.
+	Redacted []string `json:"redacted,omitempty"`
 
 	// FilesChanged lists relative paths of files that were added,
 	// modified, or deleted during command execution.
