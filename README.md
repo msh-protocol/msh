@@ -1,127 +1,66 @@
-# msh (Machine Shell)
+# msh: sudo for AI Agents
 
-> The Deterministic Execution Protocol & Runtime for AI Agents.
+> The local, machine-readable execution layer for LLMs and autonomous coding agents.
 
-`msh` is an open-source execution layer built specifically for autonomous coding agents, LLM tool-use systems, and agentic workflows. Instead of forcing AI models to parse unstructured, ANSI-polluted terminal streams, `msh` provides a machine-readable execution environment with strict state preservation, automated log sanitization, and structured JSON output.
+[![CI](https://github.com/msh-protocol/msh/actions/workflows/ci.yml/badge.svg)](https://github.com/msh-protocol/msh/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/msh-protocol/msh)](https://github.com/msh-protocol/msh/releases)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-## Why msh?
+When an AI agent runs a terminal command, raw shells break:
+1. **Interactive Prompts Hang Forever**: Command asks `[y/N]`, `password:`, or `npm init` confirmation → the agent loop freezes indefinitely.
+2. **Context Window Blowouts**: A compiler error dump or pytest trace outputs 30,000 lines → blows through model context limits and bankrupts token budgets.
+3. **Secret Leaks**: Scripts print environment variables, AWS keys, or GitHub tokens → secrets are permanently leaked into prompt histories and model providers.
+4. **ANSI Corruption**: Terminal colors, progress bars, and cursor movements pollute model embeddings and cause hallucinated outputs.
 
-When an AI agent runs `npm run build`, it usually receives a raw stream of ANSI escape codes, progress bars, and unstructured text. If the command asks a `[y/N]` question, the agent hangs forever.
-
-`msh` acts as a protective runtime between the agent and the OS:
-- **Returns Structured JSON** — Everything is an `ExecResponse`.
-- **Sanitizes Output** — Strips all ANSI codes and progress bars.
-- **Prevents Context Blowouts** — Automatically truncates massive error dumps (keeps first 100 + last 100 lines).
-- **Secret Redaction** — Automatically masks API keys and tokens in command output so secrets never leak into the model's context window.
-- **Answers Prompts** — Detects `[y/N]` and password prompts in real time and feeds your answers back to the process, so interactive commands complete instead of hanging. Pass answers with `--answer "y"` (repeatable) or `"prompt_answers": ["y"]`. Only when answers run out does msh return `"status": "blocked"`.
-- **Live Streaming Exec** — `msh serve` exposes a `/stream/exec` WebSocket: output streams in real time and prompts can be answered mid-flight, so an agent can react to `[y/N]` questions as they appear instead of guessing answers up front.
-- **Fleet Remote Streaming & HITL Dashboard** — Connect to a hub's `/stream/exec` (e.g. `ws://<hub>:9000/stream/exec?token=...&id=<daemon-id>`) to run commands live on remote daemons through their outbound tunnels with live streaming output. The embedded Web Dashboard features Human-in-the-Loop (HITL) prompt interception with one-click answering (`[y/N]`), one-click execution replay from history, and multi-terminal swarm grids.
-- **Fleet Management & Multi-Terminal Dashboard** — Centralized enterprise control plane (`msh fleet start`) featuring a real-time web dashboard with multi-terminal streaming grids, live execution logs across swarms of distributed daemons, execution replay, and history pagination.
-- **True Terminal Emulation** — Supports executing commands inside a Pseudo-Terminal (PTY) via `use_pty: true` for tools that demand a TTY.
-- **Network Daemon** — Run `msh serve` to expose an HTTP REST API, allowing remote agents to manage stateful execution sessions over the network.
-- **MCP Server** — Run `msh mcp` to natively expose the runtime to any Model Context Protocol compatible AI IDE (like Claude Desktop or Cursor).
-- **Filesystem Diffing** — Returns exactly which files were added, modified, or deleted during the command.
-
-`msh` solves the execution layer so agent builders can focus entirely on the intelligence layer.
+`msh` sits between your AI agent and the operating system as a protective, deterministic execution runtime.
 
 ---
 
-## Architecture
+## Quick Start
 
-At its core, `msh` intercepts everything that happens inside a subprocess.
+### Install
 
-```mermaid
-flowchart LR
-    A[AI Agent / LLM] -->|ExecRequest JSON| B(msh Protocol)
-    B -->|Sanitize & Truncate| C{Subprocess}
-    C -->|Detect Prompts| B
-    B -->|ExecResponse JSON| A
+#### macOS / Linux
+```bash
+curl -fsSL https://raw.githubusercontent.com/msh-protocol/msh/main/scripts/install.sh | bash
+```
+
+#### Windows (PowerShell)
+```powershell
+irm https://raw.githubusercontent.com/msh-protocol/msh/main/scripts/install.ps1 | iex
+```
+
+#### Go Install
+```bash
+go install github.com/msh-protocol/msh/cmd/msh@latest
 ```
 
 ---
 
-## Getting Started
-
-### 1. Direct Passthrough Execution (`msh <command>`)
-
-Execute any tool or shell command through the `msh` deterministic runtime simply by prefixing it:
+### 1. Universal Command Prefix (`msh <command>`)
+Run any command through `msh` simply by prefixing it — no wrapping keywords or outer quotes required:
 
 ```bash
 msh git status
 msh npm run build
-msh cargo test
 msh pytest -v
+msh cargo test
 ```
 
-No quotes, no wrapping syntax required. Output is automatically sanitized (ANSI colors stripped), truncated (prevents terminal/token blowouts), secret-redacted, and interactive prompts are answered.
+Outputs are automatically sanitized (ANSI stripped), truncated (prevents token blowouts), secret-redacted, and interactive prompts are detected and answered.
 
-You can also pass optional runtime flags before the command:
+Optional flags:
 ```bash
 msh --max-lines 500 git log
 msh --timeout 1m python script.py
+msh --pty npm test
 ```
 
-### 2. Structured JSON Output (`msh exec`)
+---
 
-Run any command and get a completely deterministic, heavily structured JSON payload back:
-```bash
-msh exec "npm run build" --max-lines 500
-```
-Returns: `{"session_id":"agent-123", "cwd":"/project/src", "stdout":"main.go...", ...}`
+### 2. Model Context Protocol (MCP) Server
+`msh` natively exposes an MCP server over standard I/O for Claude Desktop, Cursor, Claude Code, and Windsurf:
 
-### 3. CLI Wrapping (`msh wrap`)
-
-Need to use `msh` in an existing bash script or for a human developer where JSON is annoying? Use `wrap`.
-It runs exactly the same deterministic execution engine but prints the clean, truncated text directly to the terminal!
-```bash
-msh wrap "npm run build" --max-lines 500
-```
-*Outputs beautifully truncated text with ANSI color codes stripped out!*
-
-```json
-{
-  "status": "success",
-  "exit_code": 0,
-  "cwd": "/workspace/app",
-  "stdout": "Build completed successfully.",
-  "stderr": "",
-  "truncated": false,
-  "files_changed": ["dist/main.js"],
-  "duration_ms": 420
-}
-```
-
-#### 2. HTTP Daemon (Stateful Network Sessions)
-
-Start the server:
-```bash
-msh serve --port 8080
-```
-
-Agents can now submit JSON requests over HTTP. By passing a `session_id`, `msh` remembers the working directory across multiple REST requests!
-
-**Request 1 (Create Session & Change Directory):**
-```bash
-curl -X POST http://127.0.0.1:8080/execute \
-  -d '{"command": "cd src", "session_id": "agent-123"}'
-```
-Returns: `{"session_id":"agent-123", "cwd":"/project/src", ...}`
-
-**Request 2 (Execute in that Directory):**
-```bash
-curl -X POST http://127.0.0.1:8080/execute \
-  -d '{"command": "ls", "session_id": "agent-123"}'
-```
-Returns: `{"session_id":"agent-123", "cwd":"/project/src", "stdout":"main.go...", ...}`
-
-### 4. MCP Server (Native Integration)
-
-Start the server using Standard I/O (this is how you configure Claude Desktop or Cursor to use it):
-```bash
-msh mcp
-```
-
-Example `claude_desktop_config.json`:
 ```json
 {
   "mcpServers": {
@@ -132,66 +71,153 @@ Example `claude_desktop_config.json`:
   }
 }
 ```
-*Claude will now instantly have access to a deterministic `execute_command` tool!*
+Your agent immediately receives a safe, structured `execute_command` tool that cannot hang on `[y/N]` prompts or leak secrets.
 
-### Request Fields
+---
+
+### 3. Python SDK (`pip install msh-protocol`)
+
+```python
+from msh import exec
+
+# Execute with automatic secret masking & token truncation
+res = exec("npm test", max_output_lines=200)
+
+if res.status == "blocked":
+    print(f"Command requested confirmation: {res.prompt_detected}")
+elif res.ok:
+    print(res.stdout)
+else:
+    print(f"Failed with exit code {res.exit_code}: {res.stderr}")
+```
+
+#### 15-Line Drop-in Tool for LangChain / Claude:
+```python
+from msh import exec
+
+def safe_shell(command: str) -> str:
+    """Execute command safely without ANSI garbage, prompt hangs, or secret leaks."""
+    res = exec(command, max_output_lines=300)
+    if not res.ok:
+        return f"Error (exit {res.exit_code}):\n{res.stderr or res.stdout}"
+    return res.stdout
+```
+
+---
+
+### 4. TypeScript / Node SDK (`npm install @msh-protocol/client`)
+
+```typescript
+import { exec } from '@msh-protocol/client';
+
+const res = await exec('git status', { maxOutputLines: 200 });
+console.log(res.stdout, res.exit_code, res.truncated);
+```
+
+---
+
+### 5. Structured JSON Output (`msh exec`)
+For direct integration with CLI pipelines and JSON agents:
+
+```bash
+msh exec "npm run build" --max-lines 500
+```
+
+Returns:
+```json
+{
+  "session_id": "session-8b1c4e...",
+  "status": "success",
+  "exit_code": 0,
+  "cwd": "/workspace/app",
+  "stdout": "Build completed successfully.",
+  "stderr": "",
+  "truncated": false,
+  "redacted": ["AWS_SECRET_ACCESS_KEY"],
+  "files_changed": ["dist/main.js"],
+  "duration_ms": 420
+}
+```
+
+---
+
+## Core Features
+
+| Feature | Raw Terminal | `msh` |
+| :--- | :--- | :--- |
+| **Interactive Prompts (`[y/N]`)** | ❌ Hangs forever | ✅ Auto-answers or signals `blocked` |
+| **Compiler Error Dumps** | ❌ Blows 100k token context | ✅ Smart truncation (keeps head + tail) |
+| **API Keys & Tokens in Logs** | ❌ Leaked to LLM provider | ✅ Automatically masked |
+| **ANSI Escape Codes** | ❌ Unstructured garbage | ✅ Clean plain text |
+| **Exit Code Fidelity** | ⚠️ Shell-dependent | ✅ Preserved strictly |
+| **Tool Calling Contract** | ❌ Raw unstructured text | ✅ Structured `ExecResponse` JSON |
+
+---
+
+## Protocol Specification
+
+### Request Fields (`ExecRequest`)
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `command` | `string` | *required* | Shell command line to execute |
+| `cwd` | `string` | current dir | Directory to execute the command in |
+| `env` | `object` | `{}` | Key-value environment variables to inject |
+| `timeout` | `string` | `30s` | Maximum duration before SIGKILL (e.g. `30s`, `5m`) |
+| `max_output_lines` | `integer` | `200` | Max lines to return; preserves head and tail |
+| `detect_files` | `boolean` | `true` | Tracks created/modified/deleted files via snapshots |
+| `use_pty` | `boolean` | `false` | Runs inside pseudo-terminal for TTY-demanding tools |
+| `redact_secrets` | `boolean` | `true` | Masks known tokens (AWS, GitHub, Slack, OpenAI) |
+| `prompt_answers` | `string[]` | `[]` | Sequential answers fed to interactive prompts |
+
+### Response Fields (`ExecResponse`)
 
 | Field | Type | Description |
-|-------|------|-------------|
-| `command` | `string` | Shell command to execute (required). |
-| `cwd` | `string` | The directory to execute the command in. Defaults to session directory. |
-| `env` | `object` | Key-value pairs of environment variables to inject. |
-| `timeout` | `string` | Maximum execution time before being killed (e.g., `30s`, `1m`). |
-| `max_output_lines` | `integer` | Truncates output if it exceeds this (saves tokens). |
-| `detect_files` | `boolean` | If true, returns exactly which files were modified. |
-| `use_pty` | `boolean` | If true, runs the command in a Pseudo-Terminal (merges stderr into stdout). |
-| `redact_secrets` | `boolean` | If true (default), masks API keys and tokens in command output. |
+|---|---|---|
+| `status` | `string` | `success`, `error`, `timeout`, or `blocked` |
+| `exit_code` | `integer` | Exact process exit code |
+| `cwd` | `string` | Working directory after command completed |
+| `stdout` | `string` | Sanitized stdout with ANSI stripped |
+| `stderr` | `string` | Sanitized stderr with ANSI stripped |
+| `truncated` | `boolean` | `true` if output exceeded `max_output_lines` |
+| `redacted` | `string[]` | Types of detected secrets that were masked |
+| `files_changed` | `string[]` | Paths of files created, modified, or deleted |
+| `duration_ms` | `integer` | Execution duration in milliseconds |
+| `prompt_detected` | `string` | Text of prompt if command was blocked |
 
-### Response Fields
+---
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `status` | string | `success`, `error`, `timeout`, or `blocked` |
-| `exit_code` | int | Process exit code |
-| `cwd` | string | Working directory after execution |
-| `stdout` | string | Sanitized standard output (ANSI stripped) |
-| `stderr` | string | Sanitized standard error (ANSI stripped) |
-| `truncated` | bool | Whether output was truncated to save tokens |
-| `redacted` | []string | Secret names / token formats masked from the output |
-| `files_changed` | []string | Files added, modified, or deleted |
-| `duration_ms` | int64 | Execution time in milliseconds |
-| `prompt_detected` | string | Interactive prompt text if execution was blocked |
+## Observability & Fleet Hub (Optional)
 
-## Architecture
-
+`msh` includes an optional lightweight registry hub for monitoring background processes and distributed worker nodes:
+```bash
+msh fleet start
 ```
-+-------------------+           +-----------------------+           +----------------------+
-|                   |  JSON     |                       |  Syscall  |                      |
-|  AI Agent / LLM   | --------> |     msh Runtime       | --------> |   Operating System   |
-| (Gemini/Claude)   | <-------- |  (Go Execution Engine)| <-------- |   (POSIX / Windows)  |
-|                   |  Response |                       |  Results  |                      |
-+-------------------+           +-----------------------+           +----------------------+
+Starts an embedded web dashboard (`http://localhost:9000`) with live multi-terminal streaming, execution replay, and health metrics.
+
+---
+
+## Evaluation Suite
+
+`msh` includes an automated benchmark evaluating real-world problematic CLI scenarios (`evals/cli_evals_test.go`):
+- ANSI color and progress bar stripping
+- 10,000-line compiler dumps safely truncated
+- Interactive prompt detection (`[y/N]`, password, `npm init`)
+- Secret leakage masking (AWS, GitHub PAT, OpenAI keys, RSA private keys)
+- Exit code fidelity preservation
+
+Run the evaluations:
+```bash
+msh go test -v ./evals/...
 ```
 
-## Project Structure
-
-```
-msh/
-├── cmd/
-│   └── msh/              # CLI entrypoint
-├── pkg/
-│   ├── protocol/          # JSON payload schemas & contracts
-│   ├── execution/         # Process spawning & state management
-│   ├── sanitize/          # ANSI stripping, log truncation, prompt detection
-│   └── fs/                # Filesystem change detection
-├── go.mod
-├── LICENSE
-└── README.md
-```
+---
 
 ## Status
 
-`msh` is currently under active development. V0.1 (core execution engine) is in progress.
+**`v1.3.0` — Production Ready.** Active use across agentic workflows and developer toolchains.
+
+---
 
 ## License
 

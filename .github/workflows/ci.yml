@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, "feat/*" ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    name: Test & Vet (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ ubuntu-latest, macos-latest, windows-latest ]
+        go-version: [ '1.22' ]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go-version }}
+          cache: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build Fleet UI
+        run: |
+          npm --prefix fleet-ui install
+          npm --prefix fleet-ui run build
+
+      - name: Run Go Vet
+        run: go vet ./...
+
+      - name: Run Go Tests
+        run: go test -v -race ./...
+        if: matrix.os != 'windows'
+
+      - name: Run Go Tests (Windows)
+        run: go test -v ./...
+        if: matrix.os == 'windows'
+
+      - name: Build CLI Binary
+        run: go build -v ./cmd/msh
