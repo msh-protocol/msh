@@ -23,12 +23,47 @@ function App() {
   const [cmdInputs, setCmdInputs] = useState<Record<string, string>>({})
   const [runningCmds, setRunningCmds] = useState<Record<string, boolean>>({})
   const [copiedId, setCopiedId] = useState<string | null>(null)
+  const [activePrompts, setActivePrompts] = useState<Record<string, { prompt: string; execWs: WebSocket }>>({})
+  const [promptInputs, setPromptInputs] = useState<Record<string, string>>({})
 
   const copyNodeId = (id: string, e: React.MouseEvent) => {
     e.stopPropagation()
     navigator.clipboard.writeText(id)
     setCopiedId(id)
     setTimeout(() => setCopiedId(null), 2000)
+  }
+
+  const sendPromptAnswer = (nodeId: string, answer: string) => {
+    const p = activePrompts[nodeId]
+    if (!p || !p.execWs) return
+
+    p.execWs.send(JSON.stringify({
+      type: 'answer',
+      data: answer
+    }))
+
+    setSessions(prev => ({
+      ...prev,
+      [nodeId]: [...(prev[nodeId] || []), `[Prompt Answered: "${answer}"]`]
+    }))
+
+    setActivePrompts(prev => {
+      const next = { ...prev }
+      delete next[nodeId]
+      return next
+    })
+    setPromptInputs(prev => ({ ...prev, [nodeId]: '' }))
+  }
+
+  const handleRerunCommand = (nodeId: string, cmd: string) => {
+    if (!cmd) return
+    setCurrentTab('fleet')
+    if (!isLive(nodeId)) {
+      connectTerminal(nodeId)
+    }
+    setTimeout(() => {
+      runCommandOnNode(nodeId, cmd)
+    }, 150)
   }
 
   const runCommandOnNode = (nodeId: string, cmd: string) => {
@@ -61,7 +96,21 @@ function App() {
               ...prev,
               [nodeId]: [...(prev[nodeId] || []), msg.data]
             }))
+          } else if (msg.type === 'prompt' && msg.awaiting) {
+            setActivePrompts(prev => ({
+              ...prev,
+              [nodeId]: { prompt: msg.prompt || 'Input required:', execWs }
+            }))
+            setSessions(prev => ({
+              ...prev,
+              [nodeId]: [...(prev[nodeId] || []), `[⚠️ Prompt: ${msg.prompt || 'Input required'}]`]
+            }))
           } else if (msg.type === 'result') {
+            setActivePrompts(prev => {
+              const next = { ...prev }
+              delete next[nodeId]
+              return next
+            })
             const res = typeof msg.response === 'string' ? JSON.parse(msg.response) : msg.response
             if (res && res.stdout) {
               setSessions(prev => ({
@@ -80,6 +129,11 @@ function App() {
               [nodeId]: [...(prev[nodeId] || []), `[exit: ${res?.exit_code ?? 0}]`]
             }))
           } else if (msg.type === 'error') {
+            setActivePrompts(prev => {
+              const next = { ...prev }
+              delete next[nodeId]
+              return next
+            })
             setSessions(prev => ({
               ...prev,
               [nodeId]: [...(prev[nodeId] || []), `[error] ${msg.error || msg.data}`]
@@ -94,6 +148,11 @@ function App() {
       }
       execWs.onclose = () => {
         setRunningCmds(prev => ({ ...prev, [nodeId]: false }))
+        setActivePrompts(prev => {
+          const next = { ...prev }
+          delete next[nodeId]
+          return next
+        })
       }
       execWs.onerror = () => {
         setSessions(prev => ({
@@ -101,6 +160,11 @@ function App() {
           [nodeId]: [...(prev[nodeId] || []), '[exec connection failed]']
         }))
         setRunningCmds(prev => ({ ...prev, [nodeId]: false }))
+        setActivePrompts(prev => {
+          const next = { ...prev }
+          delete next[nodeId]
+          return next
+        })
       }
     } catch {
       setRunningCmds(prev => ({ ...prev, [nodeId]: false }))
@@ -579,6 +643,60 @@ function App() {
                         ))
                       )}
                     </div>
+                    {activePrompts[nodeId] && (
+                      <div className="tile-prompt-banner">
+                        <div className="prompt-header">
+                          <span className="prompt-icon">⚠️</span>
+                          <span className="prompt-title">Interactive Prompt Detected</span>
+                          <span className="prompt-pulse" />
+                        </div>
+                        <div className="prompt-message">
+                          {activePrompts[nodeId].prompt}
+                        </div>
+                        <div className="prompt-actions-container">
+                          {/\[y\/n\]|\(y\/n\)|proceed\?|continue\?|y\/n/i.test(activePrompts[nodeId].prompt) && (
+                            <div className="prompt-quick-group">
+                              <button
+                                type="button"
+                                className="btn-quick-ans btn-yes"
+                                onClick={() => sendPromptAnswer(nodeId, 'y')}
+                              >
+                                Yes (y)
+                              </button>
+                              <button
+                                type="button"
+                                className="btn-quick-ans btn-no"
+                                onClick={() => sendPromptAnswer(nodeId, 'n')}
+                              >
+                                No (n)
+                              </button>
+                            </div>
+                          )}
+                          <form
+                            className="prompt-input-form"
+                            onSubmit={(e) => {
+                              e.preventDefault()
+                              sendPromptAnswer(nodeId, promptInputs[nodeId] || '')
+                            }}
+                          >
+                            <input
+                              type="text"
+                              className="prompt-text-input"
+                              autoFocus
+                              placeholder="Type answer and press Enter..."
+                              value={promptInputs[nodeId] || ''}
+                              onChange={(e) => setPromptInputs(prev => ({ ...prev, [nodeId]: e.target.value }))}
+                            />
+                            <button
+                              type="submit"
+                              className="btn-send-answer"
+                            >
+                              Send Answer ↵
+                            </button>
+                          </form>
+                        </div>
+                      </div>
+                    )}
                     <form
                       className="tile-exec-bar"
                       onSubmit={(e) => {
@@ -681,7 +799,7 @@ function App() {
 
           <main className="main-content">
             {currentTab === 'fleet' && renderLiveFleet()}
-            {currentTab === 'history' && <History token={token} />}
+            {currentTab === 'history' && <History token={token} nodes={nodes} onRerun={handleRerunCommand} />}
             {currentTab === 'metrics' && <Metrics token={token} />}
           </main>
         </>
