@@ -152,3 +152,59 @@ elif response["status"] == "blocked":
 else:
     print(f"Build failed (exit {response['exit_code']}): {response['stderr']}")
 ```
+
+## Live Streaming Exec (`/stream/exec`)
+
+For long-running or interactive commands, msh offers a WebSocket endpoint that
+streams output in real time and lets an agent answer prompts mid-flight.
+
+Endpoint: `ws://<host>/stream/exec` (authenticate with `?token=...` or a
+`Authorization: Bearer <token>` header).
+
+Message flow, one per JSON frame:
+
+1. **start** (client → server) — begins a run. Contains the same ExecRequest as
+   `/execute`:
+
+   ```json
+   {"type":"start","request":{"command":"npm i --yes","max_output_lines":100}}
+   ```
+
+2. **output** (server → client) — raw chunk as it is read from the process:
+
+   ```json
+   {"type":"output","stream":"stdout","data":"building...\n"}
+   ```
+
+   `stream` is `"stdout"`, `"stderr"`, or `"pty"` (PTY merges both).
+
+3. **prompt** (server → client, interactive runs only) — a prompt was detected.
+   `awaiting: true` means no answer is available yet and the run is waiting for
+   one; `awaiting: false` reports an answer was just fed.
+
+   ```json
+   {"type":"prompt","prompt":"Do you want to continue? [y/N]","awaiting":true}
+   ```
+
+4. **answer** (client → server) — reply to a pending prompt. Fed to the process
+   stdin with a trailing newline:
+
+   ```json
+   {"type":"answer","data":"y"}
+   ```
+
+   Pre-supplied `prompt_answers` in the start request are consumed first; only
+   when they run out does the server wait on `answer` messages.
+
+5. **result** (server → client) — final structured ExecResponse:
+
+   ```json
+   {"type":"result","response":{"status":"success","exit_code":0,...}}
+   ```
+
+6. **stop** (client → server) — cancels the run (kills the process).
+
+Client disconnects also cancel the run. If the client falls too far behind,
+output chunks are dropped (sliding window) so a slow consumer cannot stall
+command execution; the final `result` always carries the complete sanitized
+output.

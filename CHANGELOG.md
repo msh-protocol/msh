@@ -8,12 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Live Streaming Exec** — New `/stream/exec` WebSocket endpoint on `msh serve`. Output streams to the client in real time (`{"type":"output"}` events) and interactive prompts can be answered mid-flight (`{"type":"prompt"}` → `{"type":"answer"}`), instead of pre-supplying all answers up front. Each run ends with a `{"type":"result"}` carrying the standard `ExecResponse`. The subprocess engine streams; docker/kubernetes engines fall back to a buffered run flushed on completion.
 - **Interactive Prompt Answering** — Agents can now answer interactive prompts at runtime via `PromptAnswers` (`prompt_answers`). msh streams command output in real time, detects prompts (`[y/N]`, `password:`, etc.), and feeds the next answer to the process stdin instead of blocking. A run is only marked `blocked` if prompts remain after all answers are consumed. Exposed as the repeatable `--answer` flag (`msh exec`/`msh wrap`), the HTTP/JSON `prompt_answers` field, and the MCP `prompt_answer` option.
 - **Secret Redaction** — `RedactSecrets` now masks API keys, tokens, and secrets from command output before it reaches the agent. Redaction is on by default (per command, MCP, and HTTP paths) and combines two layers: exact-value masking of environment secrets (env vars, `.env` values, session env) and shape-based masking of well-known formats (AWS access keys, GitHub tokens, Slack tokens, OpenAI/Anthropic/Stripe/Google keys, npm tokens, JWTs, private key blocks). Hook (`pre_exec`/`post_exec`) output is redacted too. Disable with `--no-redact` (CLI) or `"redact_secrets": false` (JSON/MCP).
 
 ### Changed
 - **Protocol** — `ExecRequest` gains `prompt_answers` (answers fed to interactive prompts, in order) and `redact_secrets` (default true when unset); `ExecResponse` gains `answers_used` (how many answers were consumed) and `redacted` (which secret names/token formats were masked).
-- **Engines** — `Engine.Run` now also reports how many prompt answers were consumed; the subprocess engine streams output in real time when answers are provided (both piped and PTY modes).
+- **`Executor`** — The shared request-prep and response-finalize stages were extracted so buffered and streaming runs produce identical results; `Engine.Run` now reports how many prompt answers were consumed.
+- **Engines** — The subprocess engine streams output in real time and feeds answers when provided (both piped and PTY modes) via the new `StreamingEngine` interface; docker/kubernetes engines report consumed answers but remain buffered.
 
 ## [1.0.0] - 2026-08-07
 

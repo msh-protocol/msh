@@ -48,32 +48,104 @@ func NewExecutor(session *Session) *Executor {
 //  8. Return structured response
 func (e *Executor) Execute(req protocol.ExecRequest) protocol.ExecResponse {
 	startTime := time.Now()
+	p := e.prepare(req, startTime)
+	if p.earlyOK {
+		return p.early
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), p.timeout)
+	defer cancel()
+
+	stdoutStr, stderrStr, exitCode, answersUsed, err := selectEngine(req).Run(ctx, req, p.cwd, p.env)
+
+	return e.finalize(p, ctx, startTime, stdoutStr, stderrStr, exitCode, answersUsed, err)
+}
+
+// ExecuteStreaming runs a command while pushing raw output chunks to sink in
+// real time. Pre-supplied PromptAnswers are fed automatically; when they run
+// out, live (which may block) is consulted for additional answers. The caller
+// owns ctx and is expected to apply the request timeout and cancellation.
+// Engines that do not support streaming (docker/kubernetes) fall back to a
+// buffered run whose full output is flushed to the sink once at completion.
+func (e *Executor) ExecuteStreaming(ctx context.Context, req protocol.ExecRequest, sink OutputSink, live AnswerProvider) protocol.ExecResponse {
+	startTime := time.Now()
+	p := e.prepare(req, startTime)
+	if p.earlyOK {
+		return p.early
+	}
+
+	engine := selectEngine(req)
+	if se, ok := engine.(StreamingEngine); ok {
+		stdoutStr, stderrStr, exitCode, answersUsed, err := se.RunStreaming(ctx, req, p.cwd, p.env, sink, live)
+		return e.finalize(p, ctx, startTime, stdoutStr, stderrStr, exitCode, answersUsed, err)
+	}
+
+	stdoutStr, stderrStr, exitCode, answersUsed, err := engine.Run(ctx, req, p.cwd, p.env)
+	if sink != nil {
+		sink.OnOutput("stdout", []byte(stdoutStr))
+		sink.OnOutput("stderr", []byte(stderrStr))
+	}
+	return e.finalize(p, ctx, startTime, stdoutStr, stderrStr, exitCode, answersUsed, err)
+}
+
+// selectEngine picks the execution engine for a request.
+func selectEngine(req protocol.ExecRequest) Engine {
+	switch req.Engine {
+	case "docker":
+		return NewDockerEngine()
+	case "kubernetes":
+		return NewKubernetesEngine()
+	default:
+		return NewSubprocessEngine()
+	}
+}
+
+// prep carries everything Execute / ExecuteStreaming resolve before the
+// engine actually runs, so the shared preamble stays in one place.
+type prep struct {
+	req      protocol.ExecRequest
+	timeout  time.Duration
+	maxLines int
+	cwd      string
+	env      []string
+	resp     protocol.ExecResponse
+	cfg      *hooks.Config
+	watcher  *fs.Watcher
+	cdTarget string
+	early    protocol.ExecResponse // non-zero when the run short-circuits
+	earlyOK  bool
+}
+
+// prepare resolves the working directory, environment, filesystem watcher,
+// and pre-hooks that apply before command execution.
+func (e *Executor) prepare(req protocol.ExecRequest, startTime time.Time) *prep {
+	p := &prep{req: req}
 
 	// Resolve timeout
-	timeout := req.Timeout
-	if timeout == 0 {
-		timeout = protocol.DefaultTimeout
+	p.timeout = req.Timeout
+	if p.timeout == 0 {
+		p.timeout = protocol.DefaultTimeout
 	}
 
 	// Resolve max output lines
-	maxLines := req.MaxOutputLines
-	if maxLines == 0 {
-		maxLines = protocol.DefaultMaxOutputLines
+	p.maxLines = req.MaxOutputLines
+	if p.maxLines == 0 {
+		p.maxLines = protocol.DefaultMaxOutputLines
 	}
 
 	// Resolve working directory
-	cwd := e.session.Cwd
+	p.cwd = e.session.Cwd
 	if req.Cwd != "" {
-		cwd = req.Cwd
+		p.cwd = req.Cwd
 	}
 
 	// Load .env file if specified
 	if req.EnvFile != "" {
 		envPath := req.EnvFile
 		if !filepath.IsAbs(envPath) {
-			envPath = filepath.Join(cwd, envPath)
+			envPath = filepath.Join(p.cwd, envPath)
 		}
-		
+
 		if loadedEnv, err := godotenv.Read(envPath); err == nil {
 			if req.Env == nil {
 				req.Env = make(map[string]string)
@@ -88,59 +160,57 @@ func (e *Executor) Execute(req protocol.ExecRequest) protocol.ExecResponse {
 	}
 
 	// Build environment
-	env := e.session.BuildEnv(req.Env)
+	p.env = e.session.BuildEnv(req.Env)
 
 	// Build the initial response object
-	resp := protocol.ExecResponse{
+	p.resp = protocol.ExecResponse{
 		SessionID: e.session.ID,
-		Cwd:       cwd,
+		Cwd:       p.cwd,
 	}
 
 	// 1. Load and Run Pre-Hooks
-	cfg, err := hooks.LoadConfig(cwd)
+	cfg, err := hooks.LoadConfig(p.cwd)
 	if err == nil && cfg != nil {
-		preResults, preErr := hooks.RunPreHooks(context.Background(), cfg, req.Command, cwd)
-		resp.Hooks = append(resp.Hooks, preResults...)
+		preResults, preErr := hooks.RunPreHooks(context.Background(), cfg, p.req.Command, p.cwd)
+		p.resp.Hooks = append(p.resp.Hooks, preResults...)
 		if preErr != nil {
-			resp.Status = protocol.StatusBlocked
-			resp.ExitCode = -1
-			resp.Error = preErr.Error()
-			resp.DurationMs = time.Since(startTime).Milliseconds()
-			return resp
+			p.cfg = cfg
+			p.early = protocol.ExecResponse{
+				SessionID:  e.session.ID,
+				Cwd:        p.cwd,
+				Status:     protocol.StatusBlocked,
+				ExitCode:   -1,
+				Error:      preErr.Error(),
+				Hooks:      p.resp.Hooks,
+				DurationMs: time.Since(startTime).Milliseconds(),
+			}
+			p.earlyOK = true
+			return p
 		}
 	}
+	p.cfg = cfg
 
 	// 2. Start Hybrid Filesystem Watcher if file detection is enabled
-	var watcher *fs.Watcher
 	if req.DetectFiles {
-		w, err := fs.NewWatcher(cwd, defaultIgnorePatterns())
-		if err == nil {
+		w, wErr := fs.NewWatcher(p.cwd, defaultIgnorePatterns())
+		if wErr == nil {
 			if startErr := w.Start(); startErr == nil {
-				watcher = w
+				p.watcher = w
 			}
 		}
 	}
 
 	// Parse the command for cd detection (to update session state)
-	cdTarget := parseCdCommand(req.Command)
+	p.cdTarget = parseCdCommand(p.req.Command)
 
-	// Select the execution engine
-	var engine Engine
-	switch req.Engine {
-	case "docker":
-		engine = NewDockerEngine()
-	case "kubernetes":
-		engine = NewKubernetesEngine()
-	default:
-		engine = NewSubprocessEngine()
-	}
+	return p
+}
 
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-
-	// Run command via engine
-	stdoutStr, stderrStr, exitCode, answersUsed, err := engine.Run(ctx, req, cwd, env)
-	
+// finalize turns the raw engine output into a structured ExecResponse,
+// applying sanitization, redaction, prompt detection, filesystem diffing,
+// session state updates, and post-hooks. Shared by Execute and ExecuteStreaming.
+func (e *Executor) finalize(p *prep, ctx context.Context, startTime time.Time, stdoutStr, stderrStr string, exitCode, answersUsed int, runErr error) protocol.ExecResponse {
+	resp := p.resp
 	duration := time.Since(startTime)
 
 	// Populate the response (SessionID and Cwd were set earlier)
@@ -151,27 +221,27 @@ func (e *Executor) Execute(req protocol.ExecRequest) protocol.ExecResponse {
 	if ctx.Err() == context.DeadlineExceeded {
 		resp.Status = protocol.StatusTimeout
 		resp.ExitCode = -1
-		resp.Error = fmt.Sprintf("command timed out after %s", timeout)
-	} else if err != nil {
+		resp.Error = fmt.Sprintf("command timed out after %s", p.timeout)
+	} else if runErr != nil {
 		resp.Status = protocol.StatusError
 		resp.ExitCode = exitCode
-		resp.Error = err.Error()
+		resp.Error = runErr.Error()
 	} else {
 		resp.Status = protocol.StatusSuccess
 		resp.ExitCode = exitCode
 	}
 
 	// Sanitize output — strip ANSI codes and truncate
-	stdoutClean, stdoutTruncated := sanitize.CleanOutput(stdoutStr, maxLines)
-	stderrClean, stderrTruncated := sanitize.CleanOutput(stderrStr, maxLines)
+	stdoutClean, stdoutTruncated := sanitize.CleanOutput(stdoutStr, p.maxLines)
+	stderrClean, stderrTruncated := sanitize.CleanOutput(stderrStr, p.maxLines)
 
 	resp.Stdout = strings.TrimRight(stdoutClean, "\n\r")
 	resp.Stderr = strings.TrimRight(stderrClean, "\n\r")
 	resp.Truncated = stdoutTruncated || stderrTruncated
 
 	// Apply secret redaction before returning output to the agent.
-	if req.RedactSecrets == nil || *req.RedactSecrets {
-		secrets := secretEnvMap(env)
+	if p.req.RedactSecrets == nil || *p.req.RedactSecrets {
+		secrets := secretEnvMap(p.env)
 		var kinds []string
 		resp.Stdout, kinds = sanitize.RedactSecrets(resp.Stdout, secrets)
 		resp.Redacted = append(resp.Redacted, kinds...)
@@ -197,25 +267,25 @@ func (e *Executor) Execute(req protocol.ExecRequest) protocol.ExecResponse {
 	}
 
 	// Compute filesystem diff using the Watcher
-	if watcher != nil {
-		resp.FilesChanged = watcher.Stop()
+	if p.watcher != nil {
+		resp.FilesChanged = p.watcher.Stop()
 	}
 
 	// Update session state
-	if cdTarget != "" && resp.Status == protocol.StatusSuccess {
-		e.session.UpdateCwd(cdTarget, cwd)
+	if p.cdTarget != "" && resp.Status == protocol.StatusSuccess {
+		e.session.UpdateCwd(p.cdTarget, p.cwd)
 	}
 	resp.Cwd = e.session.Cwd
 
 	// Run Post-Hooks
-	if cfg != nil {
-		postResults := hooks.RunPostHooks(context.Background(), cfg, req.Command, cwd)
+	if p.cfg != nil {
+		postResults := hooks.RunPostHooks(context.Background(), p.cfg, p.req.Command, p.cwd)
 		resp.Hooks = append(resp.Hooks, postResults...)
 	}
 
 	// Redact any secrets that leaked into post-hook output.
-	if req.RedactSecrets == nil || *req.RedactSecrets {
-		resp.Hooks = redactHooks(resp.Hooks, secretEnvMap(env))
+	if p.req.RedactSecrets == nil || *p.req.RedactSecrets {
+		resp.Hooks = redactHooks(resp.Hooks, secretEnvMap(p.env))
 	}
 
 	return resp

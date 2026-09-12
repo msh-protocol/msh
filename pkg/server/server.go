@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -45,6 +46,7 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/execute", s.handleExecute)
 	mux.HandleFunc("/health", s.handleHealth)
 	mux.HandleFunc("/stream/daemon", s.handleStreamDaemon)
+	mux.HandleFunc("/stream/exec", s.handleStreamExec)
 
 	addr := fmt.Sprintf("%s:%d", s.host, s.port)
 	fmt.Printf("msh server listening on http://%s\n", addr)
@@ -324,4 +326,189 @@ func (s *Server) handleStreamDaemon(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+}
+
+// StreamMsg is a message exchanged over the /stream/exec WebSocket.
+//
+// Client → server:
+//   {"type":"start","request":{...}}  begins a streaming run
+//   {"type":"answer","data":"y"}      answers a pending prompt
+//   {"type":"stop"}                   cancels the run
+//
+// Server → client:
+//   {"type":"output","stream":"stdout","data":"..."}   raw output as it is read
+//   {"type":"prompt","prompt":"...","awaiting":true}   run is waiting for input
+//   {"type":"result","response":{...}}                 final ExecResponse
+//   {"type":"error","error":"..."}                     protocol error
+type StreamMsg struct {
+	Type     string          `json:"type"`
+	Stream   string          `json:"stream,omitempty"`
+	Data     string          `json:"data,omitempty"`
+	Prompt   string          `json:"prompt,omitempty"`
+	Awaiting bool            `json:"awaiting,omitempty"`
+	Request  json.RawMessage `json:"request,omitempty"`
+	Response json.RawMessage `json:"response,omitempty"`
+	Error    string          `json:"error,omitempty"`
+}
+
+// wsSink relays execution event chunks onto a bounded channel destined for
+// the WebSocket writer. Chunks are dropped when the client is too slow, so a
+// stalled browser cannot pause command execution.
+type wsSink struct {
+	ch chan StreamMsg
+}
+
+func (w *wsSink) OnOutput(stream string, chunk []byte) {
+	select {
+	case w.ch <- StreamMsg{Type: "output", Stream: stream, Data: string(chunk)}:
+	default:
+	}
+}
+
+func (w *wsSink) OnPrompt(prompt string, answered bool) {
+	select {
+	case w.ch <- StreamMsg{Type: "prompt", Prompt: prompt, Awaiting: !answered}:
+	default:
+	}
+}
+
+// handleStreamExec is the live-execution endpoint: output is pushed in real
+// time over WebSocket and prompts can be answered mid-flight via "answer"
+// messages, instead of pre-supplying all answers up front.
+func (s *Server) handleStreamExec(w http.ResponseWriter, r *http.Request) {
+	// Authenticate via query string (like /stream/daemon) or Bearer header.
+	if s.token != "" {
+		tok := r.URL.Query().Get("token")
+		if tok == "" {
+			if a := r.Header.Get("Authorization"); strings.HasPrefix(a, "Bearer ") {
+				tok = strings.TrimPrefix(a, "Bearer ")
+			}
+		}
+		if tok != s.token {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+	}
+
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		fmt.Printf("WebSocket upgrade failed: %v\n", err)
+		return
+	}
+	defer conn.Close()
+
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+
+	// First message must be a start request.
+	var start StreamMsg
+	if err := conn.ReadJSON(&start); err != nil {
+		conn.WriteJSON(StreamMsg{Type: "error", Error: "expected start message: " + err.Error()})
+		return
+	}
+	if start.Type != "start" || len(start.Request) == 0 {
+		conn.WriteJSON(StreamMsg{Type: "error", Error: `first message must be {"type":"start","request":{...}}`})
+		return
+	}
+
+	execReq, err := protocol.ParseExecRequest(start.Request)
+	if err != nil {
+		conn.WriteJSON(StreamMsg{Type: "error", Error: "invalid request: " + err.Error()})
+		return
+	}
+	if execReq.Command == "" {
+		conn.WriteJSON(StreamMsg{Type: "error", Error: "command field is required"})
+		return
+	}
+
+	session, err := s.sessionManager.GetOrCreateSession(execReq.SessionID, "")
+	if err != nil {
+		conn.WriteJSON(StreamMsg{Type: "error", Error: "failed to initialize session: " + err.Error()})
+		return
+	}
+	execReq.SessionID = session.ID
+
+	// Apply the request timeout on top of the connection context, so both a
+	// long-running command and a client disconnect kill the process.
+	timeout := execReq.Timeout
+	if timeout == 0 {
+		timeout = protocol.DefaultTimeout
+	}
+	ctx, cancel = context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	// Client answers arrive on this channel and feed the live AnswerProvider.
+	answerCh := make(chan string, 8)
+
+	// Writer drains sink events to the socket under a deadline so a stalled
+	// client cannot hold the handler open forever.
+	sinkCh := make(chan StreamMsg, 64)
+	writeDone := make(chan struct{})
+	go func() {
+		defer close(writeDone)
+		for {
+			select {
+			case msg, ok := <-sinkCh:
+				if !ok {
+					return
+				}
+				conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+				if err := conn.WriteJSON(msg); err != nil {
+					cancel()
+					return
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	sink := &wsSink{ch: sinkCh}
+
+	// Read loop forwards answers and stop messages to the run.
+	go func() {
+		for {
+			var msg StreamMsg
+			if err := conn.ReadJSON(&msg); err != nil {
+				cancel()
+				return
+			}
+			switch msg.Type {
+			case "answer":
+				select {
+				case answerCh <- msg.Data:
+				case <-ctx.Done():
+					return
+				}
+			case "stop":
+				cancel()
+				return
+			}
+		}
+	}()
+
+	answers := func() (string, bool) {
+		select {
+		case a := <-answerCh:
+			return a, true
+		case <-ctx.Done():
+			return "", false
+		}
+	}
+
+	executor := execution.NewExecutor(session)
+	resp := executor.ExecuteStreaming(ctx, *execReq, sink, answers)
+	resp.SessionID = session.ID
+
+	respBytes, err := resp.ToJSON()
+	if err != nil {
+		respBytes, _ = json.Marshal(map[string]string{"error": "failed to serialize response"})
+	}
+	select {
+	case sinkCh <- StreamMsg{Type: "result", Response: respBytes}:
+	case <-ctx.Done():
+	}
+
+	close(sinkCh)
+	<-writeDone
 }
