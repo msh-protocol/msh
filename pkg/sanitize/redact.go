@@ -29,7 +29,7 @@ var redactSecretPatterns = []struct {
 	{"github", regexp.MustCompile(`gh[pousr]_[A-Za-z0-9]{36,}`)},
 	{"github_pat", regexp.MustCompile(`github_pat_[A-Za-z0-9_]{20,}`)},
 	{"slack", regexp.MustCompile(`xox[baprs]-[0-9A-Za-z-]{10,48}`)},
-	{"openai", regexp.MustCompile(`sk-[A-Za-z0-9]{20,}`)},
+	{"openai", regexp.MustCompile(`sk-[A-Za-z0-9_-]{20,}`)},
 	{"anthropic", regexp.MustCompile(`sk-ant-[A-Za-z0-9_-]{20,}`)},
 	{"stripe", regexp.MustCompile(`sk_live_[0-9a-zA-Z]{24,}`)},
 	{"stripe_test", regexp.MustCompile(`sk_test_[0-9a-zA-Z]{24,}`)},

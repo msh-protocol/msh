@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-09-12
+
+### Added
+- **Official Python SDK (`packages/python`)** — Released `msh-protocol` Python client library (`from msh import exec`) with typed dataclasses, local CLI spawn, HTTP fallback, and drop-in tool integration for LangChain, CrewAI, and Claude tool calling.
+- **Official TypeScript SDK (`packages/typescript`)** — Released `@msh-protocol/client` TypeScript package (`import { exec } from "@msh-protocol/client"`) for Node.js, providing typed, non-blocking execution wrappers for agent harnesses.
+- **Automated CI/CD Workflows** — Added GitHub Actions multi-OS test matrix (`.github/workflows/ci.yml`) testing Linux, macOS, and Windows.
+- **Automated Multi-Platform Release Pipeline** — Added `.github/workflows/release.yml` cross-compiling standalone signed binaries for 6 architectures (Linux amd64/arm64, macOS Intel/Apple Silicon, Windows amd64/arm64) with SHA256 checksums.
+- **One-Line Install Scripts** — Added `scripts/install.sh` (curl-to-bash for Linux/macOS) and `scripts/install.ps1` (PowerShell for Windows).
+- **Public CLI Evaluation Suite (`evals/`)** — Added automated benchmark running problematic real-world CLI patterns (ANSI color stripping, compiler dump context blowout truncation, interactive prompts, secret leakage).
+- **Modern OpenAI Secret Masking** — Expanded regex pattern in `pkg/sanitize/redact.go` to capture modern project API keys (`sk-proj-...` and `sk-admin-...`).
+- **Expanded Prompt Detection** — Added recognition for `npm init` confirmations, `npm install` proceed prompts, and SSH passphrase requests.
+
 ## [1.2.0] - 2026-09-12
 
 ### Added

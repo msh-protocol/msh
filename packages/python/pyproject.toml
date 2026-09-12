@@ -1,0 +1,37 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "msh-protocol"
+version = "1.3.0"
+description = "Python SDK for msh: sudo for AI agents. Safe, structured, non-blocking command execution for LLMs."
+readme = "README.md"
+requires-python = ">=3.8"
+license = "Apache-2.0"
+authors = [
+    { name = "msh-protocol" }
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Software Development :: Libraries",
+]
+dependencies = [
+    "requests>=2.25.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/msh-protocol/msh"
+Repository = "https://github.com/msh-protocol/msh"
+
+[tool.hatch.build.targets.wheel]
+packages = ["msh"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/msh",
+    "/README.md",
+]

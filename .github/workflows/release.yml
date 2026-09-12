@@ -1,0 +1,85 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    name: Build & Publish Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build Embedded UI Assets
+        run: |
+          npm --prefix fleet-ui install
+          npm --prefix fleet-ui run build
+
+      - name: Extract Tag Version
+        id: vars
+        run: echo "TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Cross-Compile Binaries
+        env:
+          CGO_ENABLED: 0
+          TAG: ${{ steps.vars.outputs.TAG }}
+        run: |
+          mkdir -p dist/packages
+          
+          # Linux amd64 & arm64
+          GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o dist/msh ./cmd/msh
+          tar -czvf "dist/packages/msh-${TAG}-linux-amd64.tar.gz" -C dist msh
+          rm dist/msh
+          
+          GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o dist/msh ./cmd/msh
+          tar -czvf "dist/packages/msh-${TAG}-linux-arm64.tar.gz" -C dist msh
+          rm dist/msh
+
+          # macOS Intel & Apple Silicon
+          GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o dist/msh ./cmd/msh
+          tar -czvf "dist/packages/msh-${TAG}-darwin-amd64.tar.gz" -C dist msh
+          rm dist/msh
+
+          GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o dist/msh ./cmd/msh
+          tar -czvf "dist/packages/msh-${TAG}-darwin-arm64.tar.gz" -C dist msh
+          rm dist/msh
+
+          # Windows amd64 & arm64
+          GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o dist/msh.exe ./cmd/msh
+          zip -j "dist/packages/msh-${TAG}-windows-amd64.zip" dist/msh.exe
+          rm dist/msh.exe
+
+          GOOS=windows GOARCH=arm64 go build -ldflags="-s -w" -o dist/msh.exe ./cmd/msh
+          zip -j "dist/packages/msh-${TAG}-windows-arm64.zip" dist/msh.exe
+          rm dist/msh.exe
+
+          # Generate SHA256 Checksums
+          cd dist/packages
+          sha256sum * > checksums.txt
+          cd ../..
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/packages/*
+          generate_release_notes: true
+          draft: false
+          prerelease: false

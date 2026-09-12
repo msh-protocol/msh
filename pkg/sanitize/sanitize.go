@@ -89,24 +89,28 @@ var promptPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)\[y/n\]`),
 	regexp.MustCompile(`(?i)\[yes/no\]`),
 	regexp.MustCompile(`(?i)\(y/n\)`),
+	regexp.MustCompile(`(?i)\(yes\)`),
+	regexp.MustCompile(`(?i)\?\s*\([y/n]\)`),
 	regexp.MustCompile(`(?i)continue\?\s*\[`),
 	regexp.MustCompile(`(?i)proceed\?\s*\[`),
 	regexp.MustCompile(`(?i)overwrite\?\s*\(`),
 
 	// Password/auth prompts
 	regexp.MustCompile(`(?i)password\s*:`),
-	regexp.MustCompile(`(?i)passphrase\s*:`),
+	regexp.MustCompile(`(?i)passphrase.*:`),
 	regexp.MustCompile(`(?i)enter\s+password`),
 	regexp.MustCompile(`(?i)sudo.*password`),
 
 	// Confirmation prompts
 	regexp.MustCompile(`(?i)are you sure`),
+	regexp.MustCompile(`(?i)is this ok`),
 	regexp.MustCompile(`(?i)press enter to continue`),
 	regexp.MustCompile(`(?i)press any key`),
 	regexp.MustCompile(`(?i)hit enter`),
 
 	// Package manager prompts
 	regexp.MustCompile(`(?i)do you want to install`),
+	regexp.MustCompile(`(?i)need to install`),
 	regexp.MustCompile(`(?i)ok to proceed`),
 }
 
