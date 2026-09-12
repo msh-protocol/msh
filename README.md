@@ -42,15 +42,34 @@ flowchart LR
 
 ## Getting Started
 
-### 1. CLI Usage (`msh exec`)
+### 1. Direct Passthrough Execution (`msh <command>`)
 
-Run any command and get a completely deterministic, heavily structured JSON payload back.
+Execute any tool or shell command through the `msh` deterministic runtime simply by prefixing it:
+
+```bash
+msh git status
+msh npm run build
+msh cargo test
+msh pytest -v
+```
+
+No quotes, no wrapping syntax required. Output is automatically sanitized (ANSI colors stripped), truncated (prevents terminal/token blowouts), secret-redacted, and interactive prompts are answered.
+
+You can also pass optional runtime flags before the command:
+```bash
+msh --max-lines 500 git log
+msh --timeout 1m python script.py
+```
+
+### 2. Structured JSON Output (`msh exec`)
+
+Run any command and get a completely deterministic, heavily structured JSON payload back:
 ```bash
 msh exec "npm run build" --max-lines 500
 ```
 Returns: `{"session_id":"agent-123", "cwd":"/project/src", "stdout":"main.go...", ...}`
 
-### 2. CLI Wrapping (`msh wrap`)
+### 3. CLI Wrapping (`msh wrap`)
 
 Need to use `msh` in an existing bash script or for a human developer where JSON is annoying? Use `wrap`.
 It runs exactly the same deterministic execution engine but prints the clean, truncated text directly to the terminal!

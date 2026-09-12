@@ -247,7 +247,8 @@ func (s *Server) relayExec(msg FleetMsg) {
 		default:
 		}
 		if s.db != nil {
-			if msg.Type == "exec_result" {
+			switch msg.Type {
+			case "exec_result":
 				var ev ExecEvent
 				if err := json.Unmarshal([]byte(msg.Data), &ev); err == nil && len(ev.Response) > 0 {
 					var resp protocol.ExecResponse
@@ -255,7 +256,7 @@ func (s *Server) relayExec(msg FleetMsg) {
 						_ = s.db.SaveExecution(sc.req, resp)
 					}
 				}
-			} else if msg.Type == "exec_error" {
+			case "exec_error":
 				var ev ExecEvent
 				_ = json.Unmarshal([]byte(msg.Data), &ev)
 				errMsg := ev.Error

@@ -7,7 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-09-12
+
 ### Added
+- **Smart Command Passthrough Runner (`msh <command>`)** — Transformed `msh` into a universal command runner (analogous to `sudo`, `time`, or `uv run`). Running `msh <command> [args...]` (e.g., `msh git status`, `msh npm test`, `msh cargo check`) executes any external command directly through the deterministic runtime without requiring `wrap` or outer quotes. Features platform-accurate argument reconstruction and escaping (Windows `CommandLineToArgvW` and POSIX quoting), smart subcommand disambiguation, leading wrapper flags support (e.g., `msh --max-lines 500 git log`, `msh --timeout 1m pytest`), and exact process exit code preservation.
+- **Streamed Execution History Persistence** — Integrated real-time database recording for remote `/stream/exec` runs on the fleet hub. Executions triggered from the dashboard terminal tiles are automatically persisted to `fleet.db`, making them immediately available in the History tab for inspection and replay.
 - **Human-in-the-Loop (HITL) Interactive Prompting in Fleet UI** — Integrated real-time prompt interception into the multi-terminal fleet dashboard. When commands hit interactive confirmations (`[y/N]`, custom input), terminal tiles highlight with a glowing amber action banner featuring one-click `[ Yes (y) ]` and `[ No (n) ]` buttons or a custom input field. Submitting sends an `{"type":"answer","data":answer}` frame over the `/stream/exec` WebSocket tunnel directly into process stdin to unblock remote execution live.
 - **One-Click Execution Replay from History** — Added an interactive daemon selector and `Re-run on Node ↻` action bar to the History tab. Operators inspecting historical `ExecRequest` records can dispatch the exact command with identical arguments to any active worker daemon with a single click, automatically navigating to the Multi-Terminal Grid and opening a live streaming session.
 - **Cryptographically Secure Token Generation (`crypto/rand`)** — Introduced `protocol.GenerateToken` utilizing 128 bits of OS entropy to generate high-entropy tokens (e.g., `msh-7e2a4f...`, `node-a22009...`, `session-8b1c4e...`). Completely eliminated predictable timestamp-based tokens across `msh fleet start`, `msh serve`, and execution sessions.

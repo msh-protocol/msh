@@ -24,7 +24,30 @@ go install github.com/msh-protocol/msh/cmd/msh@latest
 
 ## Quick Start
 
-### Execute a command
+### 1. Direct Passthrough Execution (Zero Overhead)
+
+Run any command directly through the `msh` deterministic runtime simply by prefixing it with `msh`:
+
+```bash
+msh git status
+msh npm run build
+msh cargo test
+msh pytest -v
+```
+
+Outputs are automatically sanitized (ANSI escape codes stripped), truncated (to avoid terminal or model context blowouts), and API keys/secrets are masked.
+
+You can also supply optional runtime flags before the command:
+
+```bash
+msh --max-lines 500 git log
+msh --timeout 1m python script.py
+msh --pty npm test
+```
+
+### 2. Structured JSON Output (`msh exec`)
+
+If you want structured JSON payloads for autonomous agents or API pipelines:
 
 ```bash
 msh exec "echo hello world"

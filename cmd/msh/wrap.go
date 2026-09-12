@@ -74,9 +74,10 @@ func runWrap(cmd *cobra.Command, args []string) {
 		fmt.Fprintln(os.Stderr, resp.Stderr)
 	}
 
-	if resp.Status == protocol.StatusBlocked {
+	switch resp.Status {
+	case protocol.StatusBlocked:
 		fmt.Fprintf(os.Stderr, "\n[msh] process killed due to interactive prompt: %s\n", resp.PromptDetected)
-	} else if resp.Status == protocol.StatusTimeout {
+	case protocol.StatusTimeout:
 		fmt.Fprintf(os.Stderr, "\n[msh] process killed due to timeout (%s)\n", flagTimeout)
 	}
 

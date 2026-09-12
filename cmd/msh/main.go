@@ -31,17 +31,38 @@ var (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "msh",
+	Use:   "msh [command | flags] [args...]",
 	Short: "The Deterministic Execution Protocol & Runtime for AI Agents",
 	Long: `msh is an open-source execution layer built specifically for
 autonomous coding agents, LLM tool-use systems, and agentic workflows.
 
-Instead of forcing AI models to parse unstructured, ANSI-polluted terminal
-streams, msh provides a machine-readable execution environment with strict
-state preservation, automated log sanitization, and structured JSON output.`,
+Run any command through the msh deterministic runtime simply by prefixing it:
+  msh git status
+  msh npm run build
+  msh pytest -v
+
+All command outputs are automatically sanitized, truncated, secret-redacted,
+and interactive prompts are detected and answered.`,
+	Example: `  # Smart Passthrough execution (run any command directly)
+  msh git status
+  msh npm test
+  msh --max-lines 500 git log
+  msh --timeout 1m python script.py
+
+  # Management subcommands
+  msh exec "npm run build"     # Structured JSON response
+  msh fleet start             # Start enterprise control plane hub
+  msh serve --port 8080       # Start HTTP execution daemon`,
 }
 
 func main() {
+	// Check for Smart Command Passthrough mode (e.g., `msh git status`, `msh npm run build`)
+	if len(os.Args) > 1 {
+		if flags, cmdStr, isPassthrough := ParsePassthroughArgs(os.Args[1:]); isPassthrough {
+			RunPassthrough(flags, cmdStr)
+			return
+		}
+	}
 
 	// --- exec command ---
 	execCmd := &cobra.Command{
