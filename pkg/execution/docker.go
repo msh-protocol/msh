@@ -188,7 +188,13 @@ func (d *DockerEngine) runPTY(ctx context.Context, req protocol.ExecRequest, cwd
 	if err != nil {
 		return "", "", -1, 0, err
 	}
-	defer ptmx.Close()
+	var closeOnce sync.Once
+	closePtmx := func() {
+		closeOnce.Do(func() {
+			_ = ptmx.Close()
+		})
+	}
+	defer closePtmx()
 
 	args := []string{"run", "--rm", "-it", "-w", cwd}
 	if absCwd, aerr := filepath.Abs(cwd); aerr == nil {
@@ -220,7 +226,9 @@ func (d *DockerEngine) runPTY(ctx context.Context, req protocol.ExecRequest, cwd
 
 	select {
 	case <-done:
-	case <-time.After(100 * time.Millisecond):
+	case <-time.After(2 * time.Second):
+		closePtmx()
+		<-done
 	}
 
 	exitCode := 0

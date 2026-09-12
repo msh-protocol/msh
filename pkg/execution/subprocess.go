@@ -190,7 +190,13 @@ func (s *SubprocessEngine) runPTY(ctx context.Context, req protocol.ExecRequest,
 	if err != nil {
 		return "", "", -1, 0, err
 	}
-	defer ptmx.Close()
+	var closeOnce sync.Once
+	closePtmx := func() {
+		closeOnce.Do(func() {
+			_ = ptmx.Close()
+		})
+	}
+	defer closePtmx()
 
 	var ptyCmd *pty.Cmd
 	if runtime.GOOS == "windows" {
@@ -229,7 +235,9 @@ func (s *SubprocessEngine) runPTY(ctx context.Context, req protocol.ExecRequest,
 
 	select {
 	case <-done:
-	case <-time.After(100 * time.Millisecond):
+	case <-time.After(2 * time.Second):
+		closePtmx()
+		<-done
 	}
 
 	exitCode := 0

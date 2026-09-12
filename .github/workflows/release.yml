@@ -29,9 +29,10 @@ jobs:
           node-version: '20'
 
       - name: Build Embedded UI Assets
+        working-directory: fleet-ui
         run: |
-          npm --prefix fleet-ui install
-          npm --prefix fleet-ui run build
+          npm install
+          npm run build
 
       - name: Extract Tag Version
         id: vars

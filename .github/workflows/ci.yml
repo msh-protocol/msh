@@ -31,9 +31,10 @@ jobs:
           node-version: '20'
 
       - name: Build Fleet UI
+        working-directory: fleet-ui
         run: |
-          npm --prefix fleet-ui install
-          npm --prefix fleet-ui run build
+          npm install
+          npm run build
 
       - name: Run Go Vet
         run: go vet ./...
