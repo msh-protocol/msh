@@ -139,12 +139,7 @@ func (d *DockerEngine) runInteractive(ctx context.Context, req protocol.ExecRequ
 		_, _ = io.Copy(sinkOf(out, sink, "stderr"), stderrPipe)
 	}()
 
-	err = cmd.Wait()
-	if stdin != nil {
-		stdin.Close() // signal EOF once the container has exited
-	}
-
-	// Drain remaining buffered output.
+	// Drain remaining buffered output before cmd.Wait() closes the pipes (per os/exec doc).
 	done := make(chan struct{})
 	go func() {
 		wg.Wait()
@@ -152,7 +147,14 @@ func (d *DockerEngine) runInteractive(ctx context.Context, req protocol.ExecRequ
 	}()
 	select {
 	case <-done:
+		err = cmd.Wait()
 	case <-time.After(2 * time.Second):
+		err = cmd.Wait()
+		<-done
+	}
+
+	if stdin != nil {
+		_ = stdin.Close() // signal EOF once the container has exited
 	}
 
 	answersUsed := 0

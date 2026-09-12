@@ -146,11 +146,7 @@ func (k *KubernetesEngine) runInteractive(ctx context.Context, req protocol.Exec
 		_, _ = io.Copy(sinkOf(out, sink, "stderr"), stderrPipe)
 	}()
 
-	err = cmd.Wait()
-	if stdin != nil {
-		stdin.Close()
-	}
-
+	// Drain remaining buffered output before cmd.Wait() closes the pipes (per os/exec doc).
 	done := make(chan struct{})
 	go func() {
 		wg.Wait()
@@ -158,7 +154,14 @@ func (k *KubernetesEngine) runInteractive(ctx context.Context, req protocol.Exec
 	}()
 	select {
 	case <-done:
+		err = cmd.Wait()
 	case <-time.After(2 * time.Second):
+		err = cmd.Wait()
+		<-done
+	}
+
+	if stdin != nil {
+		_ = stdin.Close()
 	}
 
 	answersUsed := 0
