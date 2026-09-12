@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/aymanbagabas/go-pty"
+	"github.com/msh-protocol/msh/pkg/prompts"
 	"github.com/msh-protocol/msh/pkg/protocol"
 )
 
@@ -21,17 +22,75 @@ func NewSubprocessEngine() *SubprocessEngine {
 }
 
 func (s *SubprocessEngine) Run(ctx context.Context, req protocol.ExecRequest, cwd string, env []string) (string, string, int, int, error) {
+	return s.RunStreaming(ctx, req, cwd, env, nil, nil, nil)
+}
+
+// RunStreaming implements StreamingEngine. When answers are provided it feeds
+// them to the process stdin in real time; when sink is set it pushes raw
+// output chunks as they are read instead of only at completion.
+func (s *SubprocessEngine) RunStreaming(ctx context.Context, req protocol.ExecRequest, cwd string, env []string, sink OutputSink, live AnswerProvider, policy prompts.AnswerFunc) (string, string, int, int, error) {
 	answers := req.PromptAnswers
 
 	if req.UsePty {
-		return s.runPTY(ctx, req, cwd, env, answers)
+		return s.runPTY(ctx, req, cwd, env, answers, live, policy, sink)
 	}
-	return s.runPipes(ctx, req, cwd, env, answers)
+	return s.runPipes(ctx, req, cwd, env, answers, live, policy, sink)
 }
 
-// runPipes executes the command with piped stdout/stderr/stdin and feeds
-// prompt answers in real-time when provided.
-func (s *SubprocessEngine) runPipes(ctx context.Context, req protocol.ExecRequest, cwd string, env []string, answers []string) (string, string, int, int, error) {
+// sinkWriter relays chunks to an underlying writer and optionally to an
+// OutputSink for live streaming.
+type sinkWriter struct {
+	out    io.Writer
+	sink   OutputSink
+	stream string
+}
+
+func (w *sinkWriter) Write(chunk []byte) (int, error) {
+	n, err := w.out.Write(chunk)
+	if w.sink != nil {
+		w.sink.OnOutput(w.stream, chunk)
+	}
+	return n, err
+}
+
+// sinkOf wraps a destination writer with live-output streaming when a sink is
+// provided, otherwise returning the writer unchanged.
+func sinkOf(out io.Writer, sink OutputSink, stream string) io.Writer {
+	if sink == nil {
+		return out
+	}
+	return &sinkWriter{out: out, sink: sink, stream: stream}
+}
+
+// ptyLineEnd returns the answer terminator used when feeding a pseudo
+// terminal: PTYs on Windows expect a carriage return for Enter to register.
+func ptyLineEnd() string {
+	if runtime.GOOS == "windows" {
+		return "\r\n"
+	}
+	return "\n"
+}
+
+// buildAnswerer creates the prompt answerer used across a streaming run,
+// wiring in the optional live answer source, committed answer policy, and
+// sink notification.
+func buildAnswerer(stdin io.Writer, answers []string, live AnswerProvider, policy prompts.AnswerFunc, sink OutputSink) *promptAnswerer {
+	a := newPromptAnswerer(stdin, answers)
+	if live != nil {
+		a.setLive(live)
+	}
+	if policy != nil {
+		a.setPolicy(policy)
+	}
+	if sink != nil {
+		a.setOnPrompt(sink.OnPrompt)
+	}
+	return a
+}
+
+// runPipes executes the command with piped stdout/stderr/stdin, feeding
+// prompt answers (pre-supplied or live) in real time.
+func (s *SubprocessEngine) runPipes(ctx context.Context, req protocol.ExecRequest, cwd string, env []string, answers []string, live AnswerProvider, policy prompts.AnswerFunc, sink OutputSink) (string, string, int, int, error) {
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {
 		cmd = exec.CommandContext(ctx, "cmd.exe", "/C", req.Command)
@@ -45,7 +104,7 @@ func (s *SubprocessEngine) runPipes(ctx context.Context, req protocol.ExecReques
 	// real input instead of EOF. Otherwise fall back to the original
 	// /dev/null behavior.
 	var stdin io.WriteCloser
-	if len(answers) > 0 {
+	if len(answers) > 0 || live != nil || policy != nil {
 		pw, err := cmd.StdinPipe()
 		if err != nil {
 			return "", "", -1, 0, err
@@ -69,26 +128,26 @@ func (s *SubprocessEngine) runPipes(ctx context.Context, req protocol.ExecReques
 	var stdoutBuf, stderrBuf bytes.Buffer
 	var answerer *promptAnswerer
 	if stdin != nil {
-		answerer = newPromptAnswerer(stdin, answers)
+		answerer = buildAnswerer(stdin, answers, live, policy, sink)
 	}
 
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
+		var out io.Writer = &stdoutBuf
 		if answerer != nil {
-			_, _ = io.Copy(&streamScanner{out: &stdoutBuf, answerer: answerer}, stdoutPipe)
-		} else {
-			_, _ = io.Copy(&stdoutBuf, stdoutPipe)
+			out = &streamScanner{out: &stdoutBuf, answerer: answerer}
 		}
+		_, _ = io.Copy(sinkOf(out, sink, "stdout"), stdoutPipe)
 	}()
 	go func() {
 		defer wg.Done()
+		var out io.Writer = &stderrBuf
 		if answerer != nil {
-			_, _ = io.Copy(&streamScanner{out: &stderrBuf, answerer: answerer}, stderrPipe)
-		} else {
-			_, _ = io.Copy(&stderrBuf, stderrPipe)
+			out = &streamScanner{out: &stderrBuf, answerer: answerer}
 		}
+		_, _ = io.Copy(sinkOf(out, sink, "stderr"), stderrPipe)
 	}()
 
 	err = cmd.Wait()
@@ -125,8 +184,8 @@ func (s *SubprocessEngine) runPipes(ctx context.Context, req protocol.ExecReques
 }
 
 // runPTY executes the command inside a pseudo-terminal, merging stderr into
-// stdout, and feeds prompt answers to the PTY master in real-time.
-func (s *SubprocessEngine) runPTY(ctx context.Context, req protocol.ExecRequest, cwd string, env []string, answers []string) (string, string, int, int, error) {
+// stdout, and feeds prompt answers to the PTY master in real time.
+func (s *SubprocessEngine) runPTY(ctx context.Context, req protocol.ExecRequest, cwd string, env []string, answers []string, live AnswerProvider, policy prompts.AnswerFunc, sink OutputSink) (string, string, int, int, error) {
 	ptmx, err := pty.New()
 	if err != nil {
 		return "", "", -1, 0, err
@@ -155,12 +214,14 @@ func (s *SubprocessEngine) runPTY(ctx context.Context, req protocol.ExecRequest,
 		return "", "", -1, 0, err
 	}
 
-	answerer := newPromptAnswerer(ptmx, answers)
+	answerer := buildAnswerer(ptmx, answers, live, policy, sink)
+	answerer.setLineEnd(ptyLineEnd())
 	var stdoutBuf bytes.Buffer
 
 	done := make(chan struct{})
 	go func() {
-		_, _ = io.Copy(&streamScanner{out: &stdoutBuf, answerer: answerer}, ptmx)
+		scanner := &streamScanner{out: &stdoutBuf, answerer: answerer}
+		_, _ = io.Copy(sinkOf(scanner, sink, "pty"), ptmx)
 		close(done)
 	}()
 

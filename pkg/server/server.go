@@ -9,6 +9,9 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -26,6 +29,7 @@ type Server struct {
 	host           string
 	token          string
 	fleet          string
+	nodeID         string
 }
 
 // NewServer initializes a new msh HTTP server.
@@ -36,6 +40,19 @@ func NewServer(host string, port int, idleTimeout time.Duration, token string, f
 		host:           host,
 		token:          token,
 		fleet:          fleet,
+		nodeID:         protocol.GenerateToken("node-"),
+	}
+}
+
+// NodeID returns the unique node identifier registered with the fleet hub.
+func (s *Server) NodeID() string {
+	return s.nodeID
+}
+
+// SetNodeID sets the unique node identifier registered with the fleet hub.
+func (s *Server) SetNodeID(id string) {
+	if id != "" {
+		s.nodeID = id
 	}
 }
 
@@ -45,6 +62,7 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/execute", s.handleExecute)
 	mux.HandleFunc("/health", s.handleHealth)
 	mux.HandleFunc("/stream/daemon", s.handleStreamDaemon)
+	mux.HandleFunc("/stream/exec", s.handleStreamExec)
 
 	addr := fmt.Sprintf("%s:%d", s.host, s.port)
 	fmt.Printf("msh server listening on http://%s\n", addr)
@@ -85,19 +103,41 @@ func (s *Server) connectToFleet() {
 
 		fmt.Printf("Connected to msh fleet hub at %s\n", s.fleet)
 
-		// Send registration payload
+		// All writes to the hub go through this channel so log streaming and
+		// relayed exec events never race on the socket.
+		sendCh := make(chan []byte, 256)
+		go func() {
+			for b := range sendCh {
+				if err := conn.WriteMessage(websocket.TextMessage, b); err != nil {
+					conn.Close()
+					return
+				}
+			}
+		}()
+
+		// Registration payload
 		host, _ := os.Hostname()
-		// We should import runtime for GOOS and GOARCH
-		payload := map[string]string{
-			"id":       s.token, // use token as unique ID for now
-			"hostname": host,
-		}
-		conn.WriteJSON(payload)
+		payload, _ := json.Marshal(fleet.NodeInfo{ID: s.nodeID, Hostname: host, OS: runtime.GOOS, Arch: runtime.GOARCH})
+		sendCh <- payload
 
 		// Context for cancelling log tailing
-		ctx, cancel := context.WithCancel(context.Background())
+		logCtx, logCancel := context.WithCancel(context.Background())
 
-		// Read loop to detect disconnects and handle messages
+		// Registry of relayed exec streams on this connection.
+		var streamMu sync.Mutex
+		streams := make(map[string]*pendingStream)
+		register := func(id string, ps *pendingStream) {
+			streamMu.Lock()
+			streams[id] = ps
+			streamMu.Unlock()
+		}
+		unregister := func(id string) {
+			streamMu.Lock()
+			delete(streams, id)
+			streamMu.Unlock()
+		}
+
+		// Read loop to detect disconnects and dispatch hub messages
 		for {
 			var msg fleet.FleetMsg
 			if err := conn.ReadJSON(&msg); err != nil {
@@ -107,16 +147,20 @@ func (s *Server) connectToFleet() {
 
 			switch msg.Type {
 			case "stream_start":
-				cancel() // cancel any existing stream
-				ctx, cancel = context.WithCancel(context.Background())
-				
-				logPath := filepath.Join(".msh", "daemons", s.token+".log")
+				logCancel() // cancel any existing stream
+				logCtx, logCancel = context.WithCancel(context.Background())
+
+				logPath := filepath.Join(".msh", "daemons", s.nodeID+".log")
+				_ = os.MkdirAll(filepath.Dir(logPath), 0755)
+				if f, err := os.OpenFile(logPath, os.O_CREATE|os.O_RDWR, 0644); err == nil {
+					f.Close()
+				}
 				outChan := make(chan []byte)
 
 				go func(c context.Context, p string, ch chan []byte) {
 					fs.TailFile(c, p, ch)
 					close(ch)
-				}(ctx, logPath, outChan)
+				}(logCtx, logPath, outChan)
 
 				go func(c context.Context, ch chan []byte) {
 					for {
@@ -127,21 +171,164 @@ func (s *Server) connectToFleet() {
 							if !ok {
 								return
 							}
-							conn.WriteJSON(fleet.FleetMsg{
-								Type: "log",
-								Data: string(chunk),
-							})
+							sendFleetMsg(sendCh, fleet.FleetMsg{Type: "log", Data: string(chunk)})
 						}
 					}
-				}(ctx, outChan)
+				}(logCtx, outChan)
 
 			case "stream_stop":
-				cancel()
+				logCancel()
+
+			case "exec_start":
+				go s.runRelayedExec(msg.ID, msg.Request, sendCh, register, unregister)
+
+			case "exec_answer":
+				streamMu.Lock()
+				ps := streams[msg.ID]
+				streamMu.Unlock()
+				if ps != nil {
+					select {
+					case ps.answers <- msg.Data:
+					default:
+					}
+				}
+
+			case "exec_stop":
+				streamMu.Lock()
+				ps := streams[msg.ID]
+				delete(streams, msg.ID)
+				streamMu.Unlock()
+				if ps != nil {
+					ps.cancel()
+				}
 			}
 		}
-		cancel() // ensure tailing stops if disconnected
+
+		logCancel() // ensure tailing stops if disconnected
+		streamMu.Lock()
+		for _, ps := range streams {
+			ps.cancel()
+		}
+		streamMu.Unlock()
+
+		close(sendCh)
 		conn.Close()
 		time.Sleep(5 * time.Second)
+	}
+}
+
+// pendingStream tracks a relayed exec run so the read loop can deliver
+// answers and stops without blocking execution.
+type pendingStream struct {
+	answers chan string
+	cancel  context.CancelFunc
+}
+
+// fleetSink relays execution events back over the fleet tunnel as ExecEvent
+// payloads wrapped in FleetMsg frames.
+type fleetSink struct {
+	id     string
+	sendCh chan<- []byte
+}
+
+func (w *fleetSink) OnOutput(stream string, chunk []byte) {
+	sendExecRelay(w.sendCh, w.id, fleet.ExecEvent{Type: "output", Stream: stream, Data: string(chunk)})
+}
+
+func (w *fleetSink) OnPrompt(prompt string, answered bool) {
+	sendExecRelay(w.sendCh, w.id, fleet.ExecEvent{Type: "prompt", Prompt: prompt, Awaiting: !answered})
+}
+
+// runRelayedExec executes a command streamed from the fleet hub and relays
+// every event back over the connection. Answers and stops arrive via the
+// pendingStream the read loop registered for this id.
+func (s *Server) runRelayedExec(id string, reqBytes json.RawMessage, sendCh chan<- []byte, register func(string, *pendingStream), unregister func(string)) {
+	req, err := protocol.ParseExecRequest(reqBytes)
+	if err != nil {
+		sendExecRelay(sendCh, id, fleet.ExecEvent{Type: "error", Error: "invalid request: " + err.Error()})
+		return
+	}
+	if req.Command == "" {
+		sendExecRelay(sendCh, id, fleet.ExecEvent{Type: "error", Error: "command field is required"})
+		return
+	}
+
+	session, err := s.sessionManager.GetOrCreateSession(req.SessionID, "")
+	if err != nil {
+		sendExecRelay(sendCh, id, fleet.ExecEvent{Type: "error", Error: "failed to initialize session: " + err.Error()})
+		return
+	}
+	req.SessionID = session.ID
+
+	timeout := req.Timeout
+	if timeout == 0 {
+		timeout = protocol.DefaultTimeout
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+
+	ps := &pendingStream{answers: make(chan string, 4), cancel: cancel}
+	register(id, ps)
+	defer func() {
+		cancel()
+		unregister(id)
+	}()
+
+	sink := &fleetSink{id: id, sendCh: sendCh}
+	answers := func() (string, bool) {
+		select {
+		case a := <-ps.answers:
+			return a, true
+		case <-ctx.Done():
+			return "", false
+		}
+	}
+
+	executor := execution.NewExecutor(session)
+	resp := executor.ExecuteStreaming(ctx, *req, sink, answers)
+	resp.SessionID = session.ID
+
+	respBytes, err := resp.ToJSON()
+	if err != nil {
+		respBytes, _ = json.Marshal(map[string]string{"error": "failed to serialize response"})
+	}
+	sendExecRelay(sendCh, id, fleet.ExecEvent{Type: "result", Response: respBytes})
+}
+
+// sendFleetMsg marshals and enqueues a FleetMsg frame; slow connections cause
+// drops instead of backpressure.
+func sendFleetMsg(ch chan<- []byte, m interface{}) {
+	b, err := json.Marshal(m)
+	if err != nil {
+		return
+	}
+	select {
+	case ch <- b:
+	default:
+	}
+}
+
+// sendExecRelay wraps an ExecEvent in a FleetMsg frame. Output and prompt
+// events are dropped when the connection is congested; result/error events
+// are terminal and never dropped.
+func sendExecRelay(ch chan<- []byte, id string, ev fleet.ExecEvent) {
+	evBytes, err := json.Marshal(ev)
+	if err != nil {
+		return
+	}
+	b, err := json.Marshal(fleet.FleetMsg{Type: "exec_" + ev.Type, ID: id, Data: string(evBytes)})
+	if err != nil {
+		return
+	}
+	if ev.Type == "result" || ev.Type == "error" {
+		select {
+		case ch <- b:
+		case <-time.After(3 * time.Second):
+		}
+		return
+	}
+	select {
+	case ch <- b:
+	default:
 	}
 }
 
@@ -157,7 +344,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleExecute(w http.ResponseWriter, r *http.Request) {
 	if s.token != "" {
 		authHeader := r.Header.Get("Authorization")
-		if authHeader != "Bearer "+s.token {
+		if !protocol.SecureCompare(authHeader, "Bearer "+s.token) {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
@@ -252,7 +439,7 @@ func (s *Server) handleStreamDaemon(w http.ResponseWriter, r *http.Request) {
 	// Authenticate via query string
 	if s.token != "" {
 		token := r.URL.Query().Get("token")
-		if token != s.token {
+		if !protocol.SecureCompare(token, s.token) {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
@@ -265,7 +452,7 @@ func (s *Server) handleStreamDaemon(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Prevent path traversal
-	if filepath.Base(daemonID) != daemonID {
+	if filepath.Base(daemonID) != daemonID || strings.ContainsAny(daemonID, "/\\..") {
 		http.Error(w, "invalid daemon id", http.StatusBadRequest)
 		return
 	}
@@ -324,4 +511,189 @@ func (s *Server) handleStreamDaemon(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+}
+
+// StreamMsg is a message exchanged over the /stream/exec WebSocket.
+//
+// Client → server:
+//   {"type":"start","request":{...}}  begins a streaming run
+//   {"type":"answer","data":"y"}      answers a pending prompt
+//   {"type":"stop"}                   cancels the run
+//
+// Server → client:
+//   {"type":"output","stream":"stdout","data":"..."}   raw output as it is read
+//   {"type":"prompt","prompt":"...","awaiting":true}   run is waiting for input
+//   {"type":"result","response":{...}}                 final ExecResponse
+//   {"type":"error","error":"..."}                     protocol error
+type StreamMsg struct {
+	Type     string          `json:"type"`
+	Stream   string          `json:"stream,omitempty"`
+	Data     string          `json:"data,omitempty"`
+	Prompt   string          `json:"prompt,omitempty"`
+	Awaiting bool            `json:"awaiting,omitempty"`
+	Request  json.RawMessage `json:"request,omitempty"`
+	Response json.RawMessage `json:"response,omitempty"`
+	Error    string          `json:"error,omitempty"`
+}
+
+// wsSink relays execution event chunks onto a bounded channel destined for
+// the WebSocket writer. Chunks are dropped when the client is too slow, so a
+// stalled browser cannot pause command execution.
+type wsSink struct {
+	ch chan StreamMsg
+}
+
+func (w *wsSink) OnOutput(stream string, chunk []byte) {
+	select {
+	case w.ch <- StreamMsg{Type: "output", Stream: stream, Data: string(chunk)}:
+	default:
+	}
+}
+
+func (w *wsSink) OnPrompt(prompt string, answered bool) {
+	select {
+	case w.ch <- StreamMsg{Type: "prompt", Prompt: prompt, Awaiting: !answered}:
+	default:
+	}
+}
+
+// handleStreamExec is the live-execution endpoint: output is pushed in real
+// time over WebSocket and prompts can be answered mid-flight via "answer"
+// messages, instead of pre-supplying all answers up front.
+func (s *Server) handleStreamExec(w http.ResponseWriter, r *http.Request) {
+	// Authenticate via query string (like /stream/daemon) or Bearer header.
+	if s.token != "" {
+		tok := r.URL.Query().Get("token")
+		if tok == "" {
+			if a := r.Header.Get("Authorization"); strings.HasPrefix(a, "Bearer ") {
+				tok = strings.TrimPrefix(a, "Bearer ")
+			}
+		}
+		if !protocol.SecureCompare(tok, s.token) {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+	}
+
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		fmt.Printf("WebSocket upgrade failed: %v\n", err)
+		return
+	}
+	defer conn.Close()
+
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+
+	// First message must be a start request.
+	var start StreamMsg
+	if err := conn.ReadJSON(&start); err != nil {
+		conn.WriteJSON(StreamMsg{Type: "error", Error: "expected start message: " + err.Error()})
+		return
+	}
+	if start.Type != "start" || len(start.Request) == 0 {
+		conn.WriteJSON(StreamMsg{Type: "error", Error: `first message must be {"type":"start","request":{...}}`})
+		return
+	}
+
+	execReq, err := protocol.ParseExecRequest(start.Request)
+	if err != nil {
+		conn.WriteJSON(StreamMsg{Type: "error", Error: "invalid request: " + err.Error()})
+		return
+	}
+	if execReq.Command == "" {
+		conn.WriteJSON(StreamMsg{Type: "error", Error: "command field is required"})
+		return
+	}
+
+	session, err := s.sessionManager.GetOrCreateSession(execReq.SessionID, "")
+	if err != nil {
+		conn.WriteJSON(StreamMsg{Type: "error", Error: "failed to initialize session: " + err.Error()})
+		return
+	}
+	execReq.SessionID = session.ID
+
+	// Apply the request timeout on top of the connection context, so both a
+	// long-running command and a client disconnect kill the process.
+	timeout := execReq.Timeout
+	if timeout == 0 {
+		timeout = protocol.DefaultTimeout
+	}
+	ctx, cancel = context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	// Client answers arrive on this channel and feed the live AnswerProvider.
+	answerCh := make(chan string, 8)
+
+	// Writer drains sink events to the socket under a deadline so a stalled
+	// client cannot hold the handler open forever.
+	sinkCh := make(chan StreamMsg, 64)
+	writeDone := make(chan struct{})
+	go func() {
+		defer close(writeDone)
+		for {
+			select {
+			case msg, ok := <-sinkCh:
+				if !ok {
+					return
+				}
+				conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+				if err := conn.WriteJSON(msg); err != nil {
+					cancel()
+					return
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	sink := &wsSink{ch: sinkCh}
+
+	// Read loop forwards answers and stop messages to the run.
+	go func() {
+		for {
+			var msg StreamMsg
+			if err := conn.ReadJSON(&msg); err != nil {
+				cancel()
+				return
+			}
+			switch msg.Type {
+			case "answer":
+				select {
+				case answerCh <- msg.Data:
+				case <-ctx.Done():
+					return
+				}
+			case "stop":
+				cancel()
+				return
+			}
+		}
+	}()
+
+	answers := func() (string, bool) {
+		select {
+		case a := <-answerCh:
+			return a, true
+		case <-ctx.Done():
+			return "", false
+		}
+	}
+
+	executor := execution.NewExecutor(session)
+	resp := executor.ExecuteStreaming(ctx, *execReq, sink, answers)
+	resp.SessionID = session.ID
+
+	respBytes, err := resp.ToJSON()
+	if err != nil {
+		respBytes, _ = json.Marshal(map[string]string{"error": "failed to serialize response"})
+	}
+	select {
+	case sinkCh <- StreamMsg{Type: "result", Response: respBytes}:
+	case <-ctx.Done():
+	}
+
+	close(sinkCh)
+	<-writeDone
 }

@@ -111,7 +111,17 @@ All output returned in `stdout` and `stderr` is processed through the msh saniti
    - `Are you sure`, `Press enter to continue`
    - `Ok to proceed?`, `Do you want to install`
 
-When `prompt_answers` are provided, the subprocess engine streams output in real time and feeds the next answer (plus a newline) to the process stdin the moment a prompt is detected — including prompts with no trailing newline. The run is only marked `blocked` if a prompt remains after all answers are consumed; each consumed answer is reported via `answers_used`. Only the subprocess engine answers prompts; docker/kubernetes engines report them but cannot feed input.
+When `prompt_answers` are provided, the subprocess engine streams output in real time and feeds the next answer (plus a newline) to the process stdin the moment a prompt is detected — including prompts with no trailing newline. The run is only marked `blocked` if a prompt remains after all answers are consumed; each consumed answer is reported via `answers_used`. The docker engine does the same: `docker run -i` attaches the container stdin, so prompts inside the container are answered through the same streaming path and `answers_used` is reported. Kubernetes answers prompts via its PTY path.
+
+A workspace can also commit **reusable answers** in `.msh/prompts.yaml`:
+
+```yaml
+prompts:
+  - match: "(?i)install.*\\[y/N\\]"
+    answer: "n"
+```
+
+Each `match` is a regex tested against the detected prompt text; the first match feeds the answer whenever no explicit `prompt_answers`/`--answer` was supplied for it. Explicit per-request answers take precedence, then the policy file, then live answers (streaming clients), then the run is reported waiting.
 
 4. **Secret Redaction** — Secrets are masked from output before it reaches the agent:
    - **Exact-value masking** — the concrete values of environment secrets are replaced with `[REDACTED:<name>]`. Only variables whose names look sensitive (`TOKEN`, `KEY`, `SECRET`, `PASSWORD`, `PASS`, `CREDENTIAL`, `PRIVATE`, `AUTH`) are matched, and values shorter than 4 characters or containing whitespace are ignored to avoid corrupting ordinary text.
@@ -152,3 +162,78 @@ elif response["status"] == "blocked":
 else:
     print(f"Build failed (exit {response['exit_code']}): {response['stderr']}")
 ```
+
+## Live Streaming Exec (`/stream/exec`)
+
+For long-running or interactive commands, msh offers a WebSocket endpoint that
+streams output in real time and lets an agent answer prompts mid-flight.
+
+Endpoint: `ws://<host>/stream/exec` (authenticate with `?token=...` or a
+`Authorization: Bearer <token>` header).
+
+Message flow, one per JSON frame:
+
+1. **start** (client → server) — begins a run. Contains the same ExecRequest as
+   `/execute`:
+
+   ```json
+   {"type":"start","request":{"command":"npm i --yes","max_output_lines":100}}
+   ```
+
+2. **output** (server → client) — raw chunk as it is read from the process:
+
+   ```json
+   {"type":"output","stream":"stdout","data":"building...\n"}
+   ```
+
+   `stream` is `"stdout"`, `"stderr"`, or `"pty"` (PTY merges both).
+
+3. **prompt** (server → client, interactive runs only) — a prompt was detected.
+   `awaiting: true` means no answer is available yet and the run is waiting for
+   one; `awaiting: false` reports an answer was just fed.
+
+   ```json
+   {"type":"prompt","prompt":"Do you want to continue? [y/N]","awaiting":true}
+   ```
+
+4. **answer** (client → server) — reply to a pending prompt. Fed to the process
+   stdin with a trailing newline:
+
+   ```json
+   {"type":"answer","data":"y"}
+   ```
+
+   Pre-supplied `prompt_answers` in the start request are consumed first; only
+   when they run out does the server wait on `answer` messages.
+
+5. **result** (server → client) — final structured ExecResponse:
+
+   ```json
+   {"type":"result","response":{"status":"success","exit_code":0,...}}
+   ```
+
+6. **stop** (client → server) — cancels the run (kills the process).
+
+Client disconnects also cancel the run. If the client falls too far behind,
+output chunks are dropped (sliding window) so a slow consumer cannot stall
+command execution; the final `result` always carries the complete sanitized
+output.
+
+### Remote (`/stream/exec` on the fleet hub)
+
+The fleet hub exposes the same protocol at `ws://<hub>/stream/exec` so a client
+can run a command on a registered daemon through its outbound tunnel:
+
+- Authenticate with `?token=<hub-token>` (or `Authorization: Bearer <hub-token>`).
+- Select a target with `?id=<daemon-id>` (per `/api/nodes`); if omitted the hub
+  picks any registered daemon.
+- The message flow is identical to a local `/stream/exec`: send `start`, receive
+  `output`/`prompt`/`result`, send `answer`/`stop`. The hub relays each frame
+  over the daemon's registration tunnel, so no inbound ports are needed on the
+  worker. `answer` and `stop` are forwarded to the live run; a client disconnect
+  cancels it.
+
+Internally, relayed runs use `FleetMsg` frames on the hub↔daemon tunnel: the hub
+sends `exec_start` (with the `request`), `exec_answer`, and `exec_stop`; the
+daemon answers with `exec_output`/`exec_prompt`/`exec_result`/`exec_error`,
+each carrying the client-facing event JSON in `data`.

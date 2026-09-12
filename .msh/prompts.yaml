@@ -1,0 +1,11 @@
+prompts:
+  # Commit reusable answers so agents don't repeat the same --answer flags.
+  # Each rule is a regex matched against detected prompt text; the first
+  # match answers the prompt. Explicit prompt_answers/--answer flags still
+  # win; these only apply when no explicit answer was supplied.
+  - match: "(?i)install.*\\[y/N\\]"
+    answer: "n"
+  - match: "(?i)(proceed|continue).*\\[y/N\\]"
+    answer: "y"
+  - match: "(?i)password:"
+    answer: "letmein"

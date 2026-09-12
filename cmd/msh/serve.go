@@ -4,15 +4,18 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/msh-protocol/msh/pkg/protocol"
 	"github.com/msh-protocol/msh/pkg/server"
 	"github.com/spf13/cobra"
 )
 
 var (
-	flagPort  int
-	flagHost  string
-	flagToken string
-	flagFleet string
+	flagPort        int
+	flagHost        string
+	flagToken       string
+	flagFleet       string
+	flagNodeID      string
+	flagIdleTimeout time.Duration
 )
 
 func init() {
@@ -29,20 +32,25 @@ over the network while maintaining persistent sessions.`,
 	serveCmd.Flags().StringVarP(&flagHost, "host", "H", "127.0.0.1", "Host IP to bind to")
 	serveCmd.Flags().StringVar(&flagToken, "token", "", "Bearer token for authorization (auto-generated if empty)")
 	serveCmd.Flags().StringVar(&flagFleet, "fleet", "", "URL of msh fleet server to register with (e.g. ws://localhost:9000)")
+	serveCmd.Flags().StringVar(&flagNodeID, "id", "", "Unique ID to identify this node in msh fleet (auto-generated if empty)")
+	serveCmd.Flags().DurationVar(&flagIdleTimeout, "idle-timeout", 30*time.Minute, "Idle timeout per session before termination")
 
 	rootCmd.AddCommand(serveCmd)
 }
 
 func runServe(cmd *cobra.Command, args []string) error {
-	idleTimeout := 30 * time.Minute
-	
+	idleTimeout := flagIdleTimeout
+
 	token := flagToken
 	if token == "" {
-		token = "msh-" + time.Now().Format("20060102150405") // simple random string
+		token = protocol.GenerateToken("msh-")
 		fmt.Printf("\n[msh] Generated Authorization Token: %s\n", token)
 	}
 
 	srv := server.NewServer(flagHost, flagPort, idleTimeout, token, flagFleet)
+	if flagNodeID != "" {
+		srv.SetNodeID(flagNodeID)
+	}
 
 	fmt.Println("Starting msh daemon...")
 	return srv.Start()

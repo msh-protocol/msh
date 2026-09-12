@@ -1,11 +1,11 @@
 package execution
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
-	"time"
+
+	"github.com/msh-protocol/msh/pkg/protocol"
 )
 
 // Session represents a persistent msh execution context.
@@ -170,7 +170,7 @@ func splitEnvVar(env string) []string {
 	return []string{env}
 }
 
-// generateSessionID creates a simple unique session identifier.
+// generateSessionID creates a cryptographically random unique session identifier.
 func generateSessionID() string {
-	return fmt.Sprintf("msh-%d", time.Now().UnixNano())
+	return protocol.GenerateToken("session-")
 }
