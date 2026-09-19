@@ -63,6 +63,24 @@ view showing the full stored request and response payloads.
 parameters, always newest-first, and reports the total record count in the
 `X-Total-Count` response header so the UI can render page controls.
 
+### Visual Git-Style File Diff Drawer & Atomic Rollback ("Undo Changes ↺")
+When commands modify, create, or delete files in a workspace, `msh` captures the unified git-style diffs and stores them in the execution response. The Fleet UI provides a rich slide-over **Diff Drawer** for code inspection:
+- **Interactive File Chips**: Every historical run that modified files displays interactive clickable chips (e.g., `📄 src/auth.ts`, `📄 package.json`) and an `Open Diff Drawer ⎘` action button.
+- **Unified Git Diff Viewer**: Full dual-gutter line numbering (old vs new), syntax-highlighted additions (`+` green), deletions (`-` red), and hunk headers (`@@` indigo).
+- **Atomic Workspace Rollback (`Undo Changes ↺`)**: One-click surgical rollback in the dashboard or via `msh undo <run-id>` CLI. Inverts the stored unified patch, restores modified/deleted files, and removes created files without affecting other changes.
+- **Multi-File Tab Navigation**: Seamlessly toggle between all changed files in the execution with status badges (`A` for Added, `M` for Modified, `D` for Deleted).
+- **Diff Metrics & Copy**: Displays exact addition/deletion counts per file and a one-click `Copy Diff` button for clipboard sharing.
+
+### Cryptographic Run Verification ("Verify ⛨")
+Every command executed through `msh` generates a tamper-evident SHA-256 `run_hash` fingerprint computed over command arguments, working directory, stdout/stderr, and filesystem changes.
+- **One-Click Replay Verification**: Click **Verify ⛨** in the History tab (or run `msh verify <run-id>` from CLI) to re-dispatch the exact command and compare execution bit-for-bit.
+- **Fidelity Scoring**: Produces an exact reproducibility score, detecting whether output or exit codes drifted due to flaky network dependencies or non-deterministic state.
+
+### Semantic Error Root Cause Extraction
+When a build or test command fails, `msh` analyzes stdout/stderr and isolates the exact root cause:
+- **Language-Aware Parsers**: TypeScript (`TSxxxx`), Python (`Traceback` / `pytest`), Go compiler/tests, Rust (`error[Exxxx]`), C/C++, and shell command errors.
+- **Root Cause Card**: Displays an amber/red diagnostic card in the History expanded view highlighting the exact file, line, error type, and failure message so developers and LLMs don't have to sift through hundreds of lines of log noise.
+
 ### Human-in-the-Loop (HITL) Interactive Prompting
 When commands running on remote worker daemons hit interactive prompts (e.g. confirmations like `[y/N]`, password entries, or tool questions), `msh` detects the prompt and emits an `awaiting` prompt frame over the `/stream/exec` tunnel:
 
