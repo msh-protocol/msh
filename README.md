@@ -182,8 +182,30 @@ Returns:
 | `truncated` | `boolean` | `true` if output exceeded `max_output_lines` |
 | `redacted` | `string[]` | Types of detected secrets that were masked |
 | `files_changed` | `string[]` | Paths of files created, modified, or deleted |
+| `file_diffs` | `object` | Map of file paths to unified git-style diffs |
+| `error_root_cause` | `object` | Isolated compiler/runtime root cause (type, message, file, line) |
+| `run_hash` | `string` | Cryptographic SHA-256 fingerprint for run verification |
 | `duration_ms` | `integer` | Execution duration in milliseconds |
 | `prompt_detected` | `string` | Text of prompt if command was blocked |
+
+---
+
+### 6. Atomic Workspace Rollback (`msh undo`)
+The "Undo" button for AI agents. Surgically reverts per-command diff patches, restores modified/deleted files, and removes created files without wiping unrelated work:
+
+```bash
+msh undo          # Rollback files modified by the most recent execution
+msh undo 42       # Rollback files modified by execution #42
+```
+
+---
+
+### 7. Cryptographic Run Verification (`msh verify`)
+Prove deterministic execution reproducibility for benchmarks and enterprise compliance:
+
+```bash
+msh verify 42     # Re-execute #42 and evaluate bit-for-bit reproducibility
+```
 
 ---
 
@@ -193,7 +215,7 @@ Returns:
 ```bash
 msh fleet start
 ```
-Starts an embedded web dashboard (`http://localhost:9000`) with live multi-terminal streaming, execution replay, and health metrics.
+Starts an embedded web dashboard (`http://localhost:9000`) with live multi-terminal streaming, execution replay, visual git-style file diff drawer, atomic rollback (`Undo Changes ↺`), cryptographic run verification, and health metrics.
 
 ---
 

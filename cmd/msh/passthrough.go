@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/msh-protocol/msh/pkg/db"
 	"github.com/msh-protocol/msh/pkg/execution"
 	"github.com/msh-protocol/msh/pkg/protocol"
 )
@@ -42,6 +43,8 @@ var internalSubcommands = map[string]bool{
 	"mcp":        true,
 	"serve":      true,
 	"plugin":     true,
+	"undo":       true,
+	"verify":     true,
 	"version":    true,
 	"help":       true,
 	"completion": true,
@@ -263,6 +266,10 @@ func RunPassthrough(flags PassthroughFlags, command string) {
 
 	executor := execution.NewExecutor(session)
 	resp := executor.Execute(req)
+
+	if database, err := db.InitDB(); err == nil {
+		_ = database.SaveExecution(req, resp)
+	}
 
 	if resp.Stdout != "" {
 		fmt.Println(resp.Stdout)

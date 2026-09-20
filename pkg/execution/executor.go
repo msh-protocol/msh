@@ -8,8 +8,11 @@ package execution
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -285,6 +288,9 @@ func (e *Executor) finalize(p *prep, ctx context.Context, startTime time.Time, s
 	// Compute filesystem diff using the Watcher
 	if p.watcher != nil {
 		resp.FilesChanged = p.watcher.Stop()
+		if len(resp.FilesChanged) > 0 {
+			resp.FileDiffs = fs.GenerateDiffs(p.cwd, resp.FilesChanged)
+		}
 	}
 
 	// Update session state
@@ -304,7 +310,35 @@ func (e *Executor) finalize(p *prep, ctx context.Context, startTime time.Time, s
 		resp.Hooks = redactHooks(resp.Hooks, secretEnvMap(p.env))
 	}
 
+	// Extract root cause if execution failed
+	if resp.Status == protocol.StatusError || resp.ExitCode != 0 {
+		resp.ErrorRootCause = sanitize.ExtractRootCause(resp.Stdout, resp.Stderr)
+	}
+
+	// Compute cryptographic RunHash
+	resp.RunHash = computeRunHash(p.req.Command, resp.Cwd, resp.ExitCode, resp.Stdout, resp.Stderr, resp.FilesChanged)
+
 	return resp
+}
+
+// computeRunHash generates a deterministic SHA-256 fingerprint for the execution.
+func computeRunHash(cmd, cwd string, exitCode int, stdout, stderr string, filesChanged []string) string {
+	h := sha256.New()
+	h.Write([]byte(cmd))
+	h.Write([]byte("\x00"))
+	h.Write([]byte(cwd))
+	h.Write([]byte("\x00"))
+	h.Write([]byte(strconv.Itoa(exitCode)))
+	h.Write([]byte("\x00"))
+	h.Write([]byte(stdout))
+	h.Write([]byte("\x00"))
+	h.Write([]byte(stderr))
+	h.Write([]byte("\x00"))
+	for _, f := range filesChanged {
+		h.Write([]byte(f))
+		h.Write([]byte(","))
+	}
+	return "sha256:" + hex.EncodeToString(h.Sum(nil))
 }
 
 // redactHooks masks secrets in pre/post hook output so hook results cannot

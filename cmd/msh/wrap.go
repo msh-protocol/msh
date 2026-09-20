@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/msh-protocol/msh/pkg/db"
 	"github.com/msh-protocol/msh/pkg/execution"
 	"github.com/msh-protocol/msh/pkg/protocol"
 	"github.com/spf13/cobra"
@@ -63,6 +64,10 @@ func runWrap(cmd *cobra.Command, args []string) {
 	// Execute
 	executor := execution.NewExecutor(session)
 	resp := executor.Execute(req)
+
+	if database, err := db.InitDB(); err == nil {
+		_ = database.SaveExecution(req, resp)
+	}
 
 	// Print stdout
 	if resp.Stdout != "" {

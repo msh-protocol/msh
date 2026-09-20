@@ -7,9 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.3.0] - 2026-09-12
+## [1.3.0] - 2026-09-20
 
 ### Added
+- **Atomic Workspace Rollback (`msh undo` & UI `Undo Changes ↺`)** — Built an atomic undo capability for autonomous agent executions. Developers and agents can run `msh undo [run-id]` or click **Undo Changes ↺** in the Fleet UI to invert per-command unified diff patches, safely deleting newly created files and restoring modified or deleted files.
+- **Semantic Error Root Cause Extraction (`error_root_cause`)** — Integrated language-aware error extraction in `pkg/sanitize/error_extractor.go` that isolates fatal compiler, syntax, and runtime exceptions (TypeScript `TSxxxx`, Python tracebacks and `pytest`, Go compiler/test errors, Rust compiler `error[Exxxx]`, C/C++, and shell command failures) into a structured `error_root_cause` object with file, line, and message details.
+- **Cryptographic Run Verification (`msh verify` & UI `Verify ⛨`)** — Introduced `msh verify [run-id]` and the `/api/verify` hub endpoint. Computes a tamper-evident SHA-256 `run_hash` across command inputs, working directory, outputs, and filesystem diffs, re-executing under identical conditions to assess bit-for-bit reproducibility and score execution drift.
+- **Visual Git-Style File Diff Drawer in Fleet UI** — Added a rich slide-over code diff inspector to the embedded React dashboard. When inspecting historical executions that modified files, operators can view interactive file chips and launch a unified git-style diff drawer featuring dual line-number gutters, color-coded addition/deletion rows, hunk headers, multi-file tabs, and a one-click raw diff copy button.
+- **Deterministic File Diff Generation (`pkg/fs/diff.go`)** — Introduced `fs.GenerateDiffs` to capture unified git diffs (`git diff -U3`) for modified files at execution time. Includes automatic synthetic diff generation for untracked/newly created files (`+`) and deleted files (`-`), token-preserving line truncations, and fallback support for non-git workspaces.
+- **Protocol Diff Payloads (`file_diffs`)** — Extended `ExecResponse` with `file_diffs` (`map[string]string`), preserving exact unified diff snapshots inside `fleet.json` and client responses for audit-grade flight recording.
+- **Universal CLI Execution History Persistence** — Integrated automated recording of all passthrough, exec, and wrap executions into `~/.msh/fleet.json`.
+- **On-Demand Diff API (`GET /api/diff`)** — Added a REST endpoint on the Fleet Hub allowing dashboards and clients to fetch real-time unified diffs for any file in an active workspace.
 - **Official Python SDK (`packages/python`)** — Released `msh-protocol` Python client library (`from msh import exec`) with typed dataclasses, local CLI spawn, HTTP fallback, and drop-in tool integration for LangChain, CrewAI, and Claude tool calling.
 - **Official TypeScript SDK (`packages/typescript`)** — Released `@msh-protocol/client` TypeScript package (`import { exec } from "@msh-protocol/client"`) for Node.js, providing typed, non-blocking execution wrappers for agent harnesses.
 - **Automated CI/CD Workflows** — Added GitHub Actions multi-OS test matrix (`.github/workflows/ci.yml`) testing Linux, macOS, and Windows.

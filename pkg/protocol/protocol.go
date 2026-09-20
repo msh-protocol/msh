@@ -137,6 +137,10 @@ type ExecResponse struct {
 	// Only populated when DetectFiles is true in the request.
 	FilesChanged []string `json:"files_changed,omitempty"`
 
+	// FileDiffs maps relative file paths to their unified git-style diffs.
+	// Only populated when DetectFiles is true and diffs can be generated.
+	FileDiffs map[string]string `json:"file_diffs,omitempty"`
+
 	// Hooks contains the execution results of any pre/post execution plugins.
 	Hooks []HookResult `json:"hooks,omitempty"`
 
@@ -151,6 +155,14 @@ type ExecResponse struct {
 	// AnswersUsed is the number of PromptAnswers fed to the process
 	// before execution completed. Zero when no answers were provided.
 	AnswersUsed int `json:"answers_used,omitempty"`
+
+	// ErrorRootCause isolates the compiler, runtime, or syntax error
+	// when a command fails (e.g., TypeScript, Python, Go, Rust, shell errors).
+	ErrorRootCause *ErrorRootCause `json:"error_root_cause,omitempty"`
+
+	// RunHash is the cryptographic SHA-256 fingerprint of the execution
+	// manifest (command, cwd, output, exit code, diffs) for run verification.
+	RunHash string `json:"run_hash,omitempty"`
 
 	// Error contains a human-readable error description when the
 	// command fails to execute (e.g., binary not found, permission denied).
@@ -196,4 +208,28 @@ type HookResult struct {
 	Stdout   string `json:"stdout,omitempty"`
 	Stderr   string `json:"stderr,omitempty"`
 	ExitCode int    `json:"exit_code"`
+}
+
+// ErrorRootCause represents an isolated root cause parsed from failure logs.
+type ErrorRootCause struct {
+	Type    string `json:"type"`              // e.g. "TypeError", "TS2304", "AssertionError", "SyntaxError"
+	Message string `json:"message"`           // e.g. "Cannot read properties of undefined"
+	File    string `json:"file,omitempty"`    // e.g. "src/auth.ts"
+	Line    int    `json:"line,omitempty"`    // e.g. 42
+	Column  int    `json:"column,omitempty"`  // e.g. 15
+	Snippet string `json:"snippet,omitempty"` // code context
+}
+
+// VerificationResult defines the outcome of verifying an execution against its cryptographic record.
+type VerificationResult struct {
+	RunID           int     `json:"run_id"`
+	Command         string  `json:"command"`
+	IsDeterministic bool    `json:"is_deterministic"`
+	ExitCodeMatch   bool    `json:"exit_code_match"`
+	OutputMatch     bool    `json:"output_match"`
+	DiffMatch       bool    `json:"diff_match"`
+	SimilarityScore float64 `json:"similarity_score"`
+	OriginalHash    string  `json:"original_hash"`
+	ReplayHash      string  `json:"replay_hash"`
+	DriftSummary    string  `json:"drift_summary,omitempty"`
 }

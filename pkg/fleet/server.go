@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"math"
 	"net/http"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -16,8 +17,10 @@ import (
 
 	"github.com/gorilla/websocket"
 	fleetui "github.com/msh-protocol/msh/fleet-ui"
-	"github.com/msh-protocol/msh/pkg/protocol"
 	"github.com/msh-protocol/msh/pkg/db"
+	"github.com/msh-protocol/msh/pkg/execution"
+	mshfs "github.com/msh-protocol/msh/pkg/fs"
+	"github.com/msh-protocol/msh/pkg/protocol"
 )
 
 var upgrader = websocket.Upgrader{
@@ -77,6 +80,9 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/execute", s.handleExecute)
 	mux.HandleFunc("/api/history", s.handleHistory)
 	mux.HandleFunc("/api/metrics", s.handleMetrics)
+	mux.HandleFunc("/api/diff", s.handleDiff)
+	mux.HandleFunc("/api/rollback", s.handleRollback)
+	mux.HandleFunc("/api/verify", s.handleVerify)
 	mux.HandleFunc("/stream/daemon", s.handleStreamDaemon)
 	mux.HandleFunc("/stream/exec", s.handleStreamExec)
 
@@ -664,4 +670,178 @@ func (s *Server) autoScaler() {
 			}
 		}
 	}
+}
+
+func (s *Server) handleDiff(w http.ResponseWriter, r *http.Request) {
+	if s.token != "" && !protocol.SecureCompare(r.Header.Get("Authorization"), "Bearer "+s.token) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Headers", "Authorization")
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	filePath := r.URL.Query().Get("file")
+	if filePath == "" {
+		http.Error(w, "file query parameter is required", http.StatusBadRequest)
+		return
+	}
+
+	cwd := r.URL.Query().Get("cwd")
+	if cwd == "" {
+		cwd, _ = os.Getwd()
+	}
+
+	diffs := mshfs.GenerateDiffs(cwd, []string{filePath})
+	diff := ""
+	if diffs != nil {
+		diff = diffs[filePath]
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"file": filePath,
+		"diff": diff,
+	})
+}
+
+func (s *Server) handleRollback(w http.ResponseWriter, r *http.Request) {
+	if s.token != "" && !protocol.SecureCompare(r.Header.Get("Authorization"), "Bearer "+s.token) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var payload struct {
+		ID int `json:"id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil || payload.ID <= 0 {
+		http.Error(w, "Invalid execution ID", http.StatusBadRequest)
+		return
+	}
+
+	records, err := s.db.GetExecutions(200, 0)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to query history: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	var targetRecord *db.ExecutionRecord
+	for i := range records {
+		if records[i].ID == payload.ID {
+			targetRecord = &records[i]
+			break
+		}
+	}
+	if targetRecord == nil {
+		http.Error(w, "Execution record not found", http.StatusNotFound)
+		return
+	}
+
+	var resp protocol.ExecResponse
+	if err := json.Unmarshal([]byte(targetRecord.RespJSON), &resp); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to parse response JSON: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	cwd := resp.Cwd
+	if cwd == "" {
+		cwd, _ = os.Getwd()
+	}
+
+	reverted, err := mshfs.RollbackExecution(cwd, resp.FilesChanged, resp.FileDiffs)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Rollback failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":        true,
+		"reverted_files": reverted,
+		"message":        fmt.Sprintf("Successfully rolled back %d file(s)", len(reverted)),
+	})
+}
+
+func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
+	if s.token != "" && !protocol.SecureCompare(r.Header.Get("Authorization"), "Bearer "+s.token) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var payload struct {
+		ID int `json:"id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil || payload.ID <= 0 {
+		http.Error(w, "Invalid execution ID", http.StatusBadRequest)
+		return
+	}
+
+	records, err := s.db.GetExecutions(200, 0)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to query history: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	var targetRecord *db.ExecutionRecord
+	for i := range records {
+		if records[i].ID == payload.ID {
+			targetRecord = &records[i]
+			break
+		}
+	}
+	if targetRecord == nil {
+		http.Error(w, "Execution record not found", http.StatusNotFound)
+		return
+	}
+
+	var req protocol.ExecRequest
+	if err := json.Unmarshal([]byte(targetRecord.ReqJSON), &req); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to parse request JSON: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	var resp protocol.ExecResponse
+	if err := json.Unmarshal([]byte(targetRecord.RespJSON), &resp); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to parse response JSON: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	result, err := execution.VerifyExecution(req, resp)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Verification failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	result.RunID = payload.ID
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
 }

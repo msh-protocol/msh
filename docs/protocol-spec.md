@@ -76,6 +76,9 @@ The msh runtime returns an `ExecResponse` after command execution.
 | `truncated` | boolean | ✅ | Whether output was truncated |
 | `redacted` | string[] | ❌ | Secret names/token formats masked from output |
 | `files_changed` | string[] | ❌ | Files added/modified/deleted (only when `detect_files: true`) |
+| `file_diffs` | map[string]string | ❌ | Map of relative file paths to unified git-style diffs |
+| `error_root_cause` | object | ❌ | Isolated compiler/runtime root cause (type, message, file, line) |
+| `run_hash` | string | ✅ | Cryptographic SHA-256 fingerprint for deterministic verification |
 | `duration_ms` | integer | ✅ | Wall-clock execution time in milliseconds |
 | `prompt_detected` | string | ❌ | Interactive prompt text (only when `status: "blocked"`) |
 | `answers_used` | integer | ❌ | Number of `prompt_answers` consumed before execution completed |
