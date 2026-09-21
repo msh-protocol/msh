@@ -198,7 +198,7 @@ const DefaultMaxOutputLines = 200
 const DefaultTimeout = 30 * time.Second
 
 // Version is the current version of the msh protocol.
-const Version = "1.3.0"
+const Version = "1.4.0"
 
 // HookResult records the outcome of a pre/post execution hook.
 type HookResult struct {

@@ -211,11 +211,23 @@ msh verify 42     # Re-execute #42 and evaluate bit-for-bit reproducibility
 
 ## Observability & Fleet Hub (Optional)
 
-`msh` includes an optional lightweight registry hub for monitoring background processes and distributed worker nodes:
+`msh` includes an optional lightweight registry hub for orchestrating background processes and supervising distributed worker nodes:
 ```bash
 msh fleet start
 ```
-Starts an embedded web dashboard (`http://localhost:9000`) with live multi-terminal streaming, execution replay, visual git-style file diff drawer, atomic rollback (`Undo Changes ↺`), cryptographic run verification, and health metrics.
+Starts an embedded web dashboard (`http://localhost:9000`) built with an authentic vintage literary print aesthetic (Aged Book Paper, Walnut Ink, and Library Sage) featuring:
+- **Centralized Swarm Broadcast & Command History**: Dispatch commands across all or selected daemons concurrently with one-click presets and shell-grade Up/Down arrow key command history recall.
+- **Dedicated Node Fleet Drawer & Roundtrip Ping**: Clickable `🟢 X Nodes Online` status pill opening a live worker drawer with specs, uptime tickers, and interactive sub-millisecond WebSocket ping testing.
+- **Global Keyboard Navigation**: Complete keyboard-first workflow (<kbd>1</kbd>, <kbd>2</kbd>, <kbd>3</kbd> for tabs, <kbd>/</kbd> for broadcast search, <kbd>r</kbd> for telemetry refresh, <kbd>n</kbd> for node drawer, and <kbd>?</kbd> for shortcuts cheatsheet).
+- **Parallel Multi-Terminal Grid**: Side-by-side low-latency streaming across workers in a high-density, responsive grid.
+- **In-Terminal Log Search & Filter**: Real-time keyword filtering per tile for targeted debugging.
+- **Follow Logs ("Tail" vs "Hold")**: Toggle auto-scroll lock to freeze viewports during heavy execution output for deep inspection.
+- **Log Export**: One-click log clipboard copying and `.txt` log file downloading.
+- **Real-Time Telemetry & Metrics Engine**: Continuous SVG latency sparklines with interactive data tooltips, ranked Top Commands leaderboard with success-rate progress meters, categorized failure distribution, and cluster health matrices.
+- **Visual Git-Style File Diff Drawer**: Dual-gutter line numbering, addition/deletion counters, side-by-side Split vs Unified diff view toggle, binary asset specimen cards with rollback safeguards, and full or single-file surgical rollback (`Revert File` / `Undo Run Changes`).
+- **Telemetry Export & Download Chooser**: Multi-format audit log export (`.json`, `.csv`, `.txt`) with native Windows folder selection via `showSaveFilePicker()` and quick-download fallback.
+- **Execution History Management**: Individual execution record deletion and one-click history clearing with two-step confirmation protection.
+- **Cryptographic Run Verification**: Bit-for-bit replay verification and execution drift scoring (`Verify`).
 
 ---
 
@@ -237,7 +249,7 @@ msh go test -v ./evals/...
 
 ## Status
 
-**`v1.3.0` — Production Ready.** Active use across agentic workflows and developer toolchains.
+**`v1.4.0` — Production Ready.** Active use across agentic workflows and developer toolchains.
 
 ---
 

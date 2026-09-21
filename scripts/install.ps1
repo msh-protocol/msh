@@ -14,7 +14,7 @@ $arch = if ([System.Environment]::Is64BitOperatingSystem) {
 }
 
 Write-Host "==> Finding latest release of msh..." -ForegroundColor Cyan
-$latestTag = "v1.3.0"
+$latestTag = "v1.4.0"
 try {
     $releaseJson = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases/latest" -UseBasicParsing
     if ($releaseJson.tag_name) {
