@@ -5,7 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+
 ## [Unreleased]
+
+## [1.4.0] - 2026-09-21
+
+### Added
+- **Binary Asset Rollback Safeguards & Native In-Drawer Error Banners** — Eliminated raw browser `alert()` modal dialogs across the dashboard in favor of animated, in-drawer status and error banners matching the vintage editorial theme. Enhanced binary asset handling for compiled machine code (`.exe`, `.dll`, `.so`, `.dylib`, etc.): the Binary Specimen Card now displays an informative warning badge explaining that machine payloads lack textual patch history, cleanly disables the rollback button, and skips binary assets during full-run rollbacks so valid source code files can still be restored cleanly without failure.
+- **Vintage Literary Print & Muted Editorial Design Theme** — Replaced all harsh orange tones with an authentic bookbinder palette: Aged Book Paper (`#f6f3eb`, `#fdfcf9`), Antique Madder & Walnut Ink (`#5c3a2e`), Soft Lampblack Ink (`#231f1d`), Book Margin Rules (`#ded7c7`), and Aged Library Sage (`#385a49`).
+- **Terminal Brand Logo** — Upgraded the brand mark to a clean terminal glyph (`>_`) in walnut ink across the top navigation bar and local execution indicators.
+- **Distraction-Free Live Fleet Terminal Grid** — Streamlined the multi-terminal grid by removing cumbersome layout pickers and manual expand/restore controls, letting terminals flow naturally in a high-density, responsive grid.
+- **Dynamic Button Micro-Animations & Tactile Feedback** — Added spring-calibrated micro-animations across buttons, including smooth 360-degree rotation on telemetry refresh, counter-clockwise spin on restart/re-run (`RotateCcwIcon`), tactile scale presses (`scale(0.94)`), and hover elevation.
+- **Visual File Diff Drawer & Binary Specimen Card** — Elevated the slide-over diff inspector with multi-file tabs, dual line-number gutters, soft sage additions, madder red deletions, and an executive Binary Asset Specimen Card for compiled assets (e.g. `msh.exe`) without fake line numbers.
+- **In-Place Command Docket Accordion in History** — Replaced detached bottom inspectors with clean, in-place accordion dockets rendered directly beneath clicked rows, featuring clickable file chips, session ID fallbacks, and side-by-side JSON payloads.
+- **Centralized Swarm Broadcast Command Bar** — Built a centralized command bar atop the Live Fleet terminal grid to dispatch commands across all or selected daemons in parallel, complete with quick command presets (`git status`, `uptime`, `whoami`, `df -h`, `docker ps`), target selectors, and live streaming feedback.
+- **In-Terminal Keyword Search & Log Filtering** — Introduced per-tile keyword filtering that allows operators to search, filter, and inspect terminal stream logs live without losing log context.
+- **Follow Logs / Auto-Scroll Lock ("Tail" vs "Hold")** — Added per-tile auto-scroll toggles allowing operators to freeze the viewport during incoming log bursts to deeply inspect previous lines without snapping back to bottom.
+- **Terminal Log Export & Sharing** — Integrated one-click log clipboard copying and `.txt` log file downloading directly from each terminal tile header.
+- **Advanced Telemetry & Analytics Dashboard** — Overhauled the Metrics dashboard with an interactive SVG latency sparkline in walnut ink, a ranked Top Commands leaderboard, a categorized failure breakdown, and a cluster health matrix.
+- **Shell-Grade Terminal Command History (Up/Down Arrow Recall)** — Implemented interactive command history recall with draft preservation and `localStorage` persistence across both the Swarm Broadcast bar and individual node execution inputs (`$ ...`).
+- **Connected Node Fleet Status Pill & Slide-Over Drawer** — Added a tactile header status pill (`🟢 X Nodes Online`) opening a slide-over `NodeDrawer` with worker daemon specifications, live uptime tickers, active stream indicators, and a one-click `/api/nodes/ping` roundtrip latency tester.
+- **Global Keyboard Shortcuts & Cheatsheet Modal (`?`)** — Added cluster-wide hotkeys (<kbd>1</kbd>, <kbd>2</kbd>, <kbd>3</kbd> for tabs, <kbd>/</kbd> for broadcast search, <kbd>r</kbd> for telemetry refresh, <kbd>n</kbd> for node drawer, <kbd>?</kbd> for cheatsheet modal, and <kbd>Esc</kbd> for drawer/modal dismissal) with input-guard protection and vintage editorial cheatsheet.
+- **Side-by-Side Split Diff View in Diff Drawer** — Added a view mode toggle (`[ Unified | Split ]`) allowing operators to inspect file changes side-by-side (old file on left, new file on right with aligned line gutters) identical to VS Code and GitHub, complete with view preference persistence and dynamic drawer expansion to 1360px.
+- **Surgical Single-File Rollback (`Revert File` & `msh undo --file`)** — Added per-file rollback capabilities in both the Diff Drawer and the CLI (`msh undo <run-id> --file <relative-path>`), allowing operators to revert individual files without wiping out all changes from an execution.
+- **Telemetry Export & Download Chooser Modal** — Created a dedicated `ExportModal` supporting structured JSON, CSV spreadsheet, and TXT log formats, scope filtering, and native folder selection via `window.showSaveFilePicker()` to prevent unwanted file drops into default download folders.
+- **Execution History Record Deletion & Clear All History** — Added per-row delete buttons (`DELETE /api/history?id=<id>`) and a global "Clear History" button (`DELETE /api/history?all=true`) with two-step confirmation safeguards.
 
 ## [1.3.0] - 2026-09-20
 

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 
 	"github.com/spf13/cobra"
@@ -13,10 +14,12 @@ import (
 	"github.com/msh-protocol/msh/pkg/protocol"
 )
 
+var undoFile string
+
 var undoCmd = &cobra.Command{
 	Use:   "undo [run-id]",
 	Short: "Rollback file changes made by an execution",
-	Long:  "Surgically rolls back file changes made by the specified execution (or the latest execution) using captured diff patches.",
+	Long:  "Surgically rolls back file changes made by the specified execution (or the latest execution) using captured diff patches. Use --file to rollback a single file.",
 	Run: func(cmd *cobra.Command, args []string) {
 		database, err := db.InitDB()
 		if err != nil {
@@ -75,6 +78,24 @@ var undoCmd = &cobra.Command{
 			cwd, _ = os.Getwd()
 		}
 
+		// Single-file surgical rollback if requested
+		if undoFile != "" {
+			diff := resp.FileDiffs[undoFile]
+			if diff == "" {
+				diff = resp.FileDiffs[filepath.ToSlash(undoFile)]
+			}
+			if diff == "" {
+				diff = resp.FileDiffs[filepath.FromSlash(undoFile)]
+			}
+
+			if err := fs.RollbackSingleFile(cwd, undoFile, diff); err != nil {
+				fmt.Printf("Rollback failed for file %s: %v\n", undoFile, err)
+				os.Exit(1)
+			}
+			fmt.Printf("✓ Successfully rolled back file: %s (execution #%d)\n", undoFile, targetRecord.ID)
+			return
+		}
+
 		reverted, err := fs.RollbackExecution(cwd, resp.FilesChanged, resp.FileDiffs)
 		if err != nil {
 			fmt.Printf("Rollback failed for execution #%d: %v\n", targetRecord.ID, err)
@@ -90,5 +111,6 @@ var undoCmd = &cobra.Command{
 }
 
 func init() {
+	undoCmd.Flags().StringVarP(&undoFile, "file", "f", "", "Rollback a specific file only")
 	rootCmd.AddCommand(undoCmd)
 }

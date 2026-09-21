@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -77,6 +78,7 @@ func (s *Server) Start() error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/register", s.handleRegister)
 	mux.HandleFunc("/api/nodes", s.handleListNodes)
+	mux.HandleFunc("/api/nodes/ping", s.handlePingNode)
 	mux.HandleFunc("/api/execute", s.handleExecute)
 	mux.HandleFunc("/api/history", s.handleHistory)
 	mux.HandleFunc("/api/metrics", s.handleMetrics)
@@ -107,27 +109,97 @@ func (s *Server) Start() error {
 	}).ListenAndServe()
 }
 
+// NodeDetail represents node telemetry returned to the UI.
+type NodeDetail struct {
+	ID          string `json:"id"`
+	Hostname    string `json:"hostname"`
+	OS          string `json:"os"`
+	Arch        string `json:"arch"`
+	ConnectedAt string `json:"connected_at,omitempty"`
+	UptimeSec   int64  `json:"uptime_sec,omitempty"`
+}
+
 func (s *Server) handleListNodes(w http.ResponseWriter, r *http.Request) {
 	if s.token != "" && !protocol.SecureCompare(r.Header.Get("Authorization"), "Bearer "+s.token) {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Headers", "Authorization")
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	var nodes []NodeInfo
+	now := time.Now()
+	var nodes []NodeDetail
 	for _, n := range s.nodes {
-		nodes = append(nodes, NodeInfo{
-			ID:       n.ID,
-			Hostname: n.Hostname,
-			OS:       n.OS,
-			Arch:     n.Arch,
+		nodes = append(nodes, NodeDetail{
+			ID:          n.ID,
+			Hostname:    n.Hostname,
+			OS:          n.OS,
+			Arch:        n.Arch,
+			ConnectedAt: n.Connected.Format(time.RFC3339),
+			UptimeSec:   int64(now.Sub(n.Connected).Seconds()),
 		})
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(nodes)
+}
+
+func (s *Server) handlePingNode(w http.ResponseWriter, r *http.Request) {
+	if s.token != "" && !protocol.SecureCompare(r.Header.Get("Authorization"), "Bearer "+s.token) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Headers", "Authorization")
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	nodeID := r.URL.Query().Get("id")
+	if nodeID == "" {
+		http.Error(w, "id parameter required", http.StatusBadRequest)
+		return
+	}
+
+	s.mu.RLock()
+	node, exists := s.nodes[nodeID]
+	s.mu.RUnlock()
+
+	if !exists || node == nil || node.conn == nil {
+		http.Error(w, "Node not found or disconnected", http.StatusNotFound)
+		return
+	}
+
+	start := time.Now()
+	err := node.conn.WriteControl(websocket.PingMessage, []byte("msh-ping"), time.Now().Add(2*time.Second))
+	latency := time.Since(start)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"id":     nodeID,
+			"online": false,
+			"error":  err.Error(),
+		})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"id":         nodeID,
+		"online":     true,
+		"latency_ms": latency.Milliseconds(),
+		"timestamp":  time.Now().Format(time.RFC3339),
+	})
 }
 
 func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
@@ -518,7 +590,8 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 	
 	// Add CORS headers for the React dashboard
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Headers", "Authorization")
+	w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusOK)
 		return
@@ -526,6 +599,42 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 
 	if s.db == nil {
 		http.Error(w, "Database not configured", http.StatusServiceUnavailable)
+		return
+	}
+
+	if r.Method == http.MethodDelete {
+		if idStr := r.URL.Query().Get("id"); idStr != "" {
+			id, err := strconv.Atoi(idStr)
+			if err != nil || id <= 0 {
+				http.Error(w, "Invalid ID", http.StatusBadRequest)
+				return
+			}
+			if err := s.db.DeleteExecution(id); err != nil {
+				http.Error(w, fmt.Sprintf("Failed to delete record: %v", err), http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"success": true,
+				"message": fmt.Sprintf("Deleted execution #%d", id),
+			})
+			return
+		}
+
+		if r.URL.Query().Get("all") == "true" {
+			if err := s.db.ClearExecutions(); err != nil {
+				http.Error(w, fmt.Sprintf("Failed to clear history: %v", err), http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"success": true,
+				"message": "Cleared all execution records",
+			})
+			return
+		}
+
+		http.Error(w, "Missing id or all query parameter", http.StatusBadRequest)
 		return
 	}
 
@@ -631,6 +740,9 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		"error_count":       dbMetrics.ErrorCount,
 		"success_rate":      succRate,
 		"total_duration_ms": dbMetrics.TotalDurationMs,
+		"top_commands":      dbMetrics.TopCommands,
+		"recent_history":    dbMetrics.RecentHistory,
+		"error_breakdown":   dbMetrics.ErrorBreakdown,
 	})
 }
 
@@ -728,7 +840,8 @@ func (s *Server) handleRollback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var payload struct {
-		ID int `json:"id"`
+		ID   int    `json:"id"`
+		File string `json:"file,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil || payload.ID <= 0 {
 		http.Error(w, "Invalid execution ID", http.StatusBadRequest)
@@ -764,13 +877,39 @@ func (s *Server) handleRollback(w http.ResponseWriter, r *http.Request) {
 		cwd, _ = os.Getwd()
 	}
 
-	reverted, err := mshfs.RollbackExecution(cwd, resp.FilesChanged, resp.FileDiffs)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Rollback failed: %v", err), http.StatusInternalServerError)
+	w.Header().Set("Content-Type", "application/json")
+
+	// Surgical single-file rollback if file is specified
+	if payload.File != "" {
+		targetFile := payload.File
+		diff := resp.FileDiffs[targetFile]
+		if diff == "" {
+			diff = resp.FileDiffs[filepath.ToSlash(targetFile)]
+		}
+		if diff == "" {
+			diff = resp.FileDiffs[filepath.FromSlash(targetFile)]
+		}
+
+		if err := mshfs.RollbackSingleFile(cwd, targetFile, diff); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success":        true,
+			"reverted_files": []string{targetFile},
+			"message":        fmt.Sprintf("Successfully rolled back %s", targetFile),
+		})
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
+	// Full execution rollback
+	reverted, err := mshfs.RollbackExecution(cwd, resp.FilesChanged, resp.FileDiffs)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success":        true,
 		"reverted_files": reverted,

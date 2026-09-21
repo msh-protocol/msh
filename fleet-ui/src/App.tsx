@@ -1,13 +1,25 @@
 import { useState, useEffect, useRef } from 'react'
 import { History } from './components/History'
 import { Metrics } from './components/Metrics'
+import { NodeDrawer, type NodeDetail } from './components/NodeDrawer'
+import { ShortcutsModal } from './components/ShortcutsModal'
+import {
+  CopyIcon,
+  CheckIcon,
+  AlertTriangleIcon,
+  XIcon,
+  SearchIcon,
+  DownloadIcon,
+  RadioIcon,
+  SendIcon,
+  ArrowDownIcon,
+  ServerIcon,
+  ClockIcon,
+  TrendingUpIcon
+} from './components/Icons'
+import { MshLogo } from './components/MshLogo'
 
-interface NodeInfo {
-  id: string
-  hostname: string
-  os: string
-  arch: string
-}
+type NodeInfo = NodeDetail
 
 function App() {
   const [token, setToken] = useState<string>(() => localStorage.getItem('msh_fleet_token') || '')
@@ -15,8 +27,6 @@ function App() {
   const [nodes, setNodes] = useState<NodeInfo[]>([])
   const [sessions, setSessions] = useState<Record<string, string[]>>({})
   const [closed, setClosed] = useState<Record<string, boolean>>({})
-  const [maximizedNode, setMaximizedNode] = useState<string | null>(null)
-  const [gridLayout, setGridLayout] = useState<'auto' | '1' | '2' | '3'>('auto')
   const wsRefs = useRef<Record<string, WebSocket>>({})
   const tileRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const [currentTab, setCurrentTab] = useState<'fleet' | 'history' | 'metrics'>('fleet')
@@ -25,6 +35,239 @@ function App() {
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [activePrompts, setActivePrompts] = useState<Record<string, { prompt: string; execWs: WebSocket }>>({})
   const [promptInputs, setPromptInputs] = useState<Record<string, string>>({})
+
+  // Live Fleet Broadcast & Per-Tile Controls State
+  const [broadcastCmd, setBroadcastCmd] = useState<string>('')
+  const [broadcastTarget, setBroadcastTarget] = useState<string>('all')
+  const [isBroadcasting, setIsBroadcasting] = useState<boolean>(false)
+  const [broadcastSuccess, setBroadcastSuccess] = useState<boolean>(false)
+  const [logFilters, setLogFilters] = useState<Record<string, string>>({})
+  const [showFilter, setShowFilter] = useState<Record<string, boolean>>({})
+  const [followLogs, setFollowLogs] = useState<Record<string, boolean>>({})
+  const [copiedLogs, setCopiedLogs] = useState<Record<string, boolean>>({})
+
+  // Command History State (localStorage backed)
+  const [broadcastHistory, setBroadcastHistory] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('msh_broadcast_history')
+      return saved ? JSON.parse(saved) : []
+    } catch {
+      return []
+    }
+  })
+  const [broadcastHistoryIdx, setBroadcastHistoryIdx] = useState<number>(-1)
+  const [broadcastDraft, setBroadcastDraft] = useState<string>('')
+
+  const [nodeHistories, setNodeHistories] = useState<Record<string, string[]>>(() => {
+    try {
+      const saved = localStorage.getItem('msh_node_histories')
+      return saved ? JSON.parse(saved) : {}
+    } catch {
+      return {}
+    }
+  })
+  const [nodeHistoryIdx, setNodeHistoryIdx] = useState<Record<string, number>>({})
+  const [nodeDrafts, setNodeDrafts] = useState<Record<string, string>>({})
+
+  // Drawers & Modals State
+  const [isNodeDrawerOpen, setIsNodeDrawerOpen] = useState<boolean>(false)
+  const [isShortcutsOpen, setIsShortcutsOpen] = useState<boolean>(false)
+
+  // Swarm Broadcast History Up/Down Handler
+  const handleBroadcastKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowUp') {
+      if (broadcastHistory.length === 0) return
+      e.preventDefault()
+      if (broadcastHistoryIdx === -1) {
+        setBroadcastDraft(broadcastCmd)
+        const newIdx = broadcastHistory.length - 1
+        setBroadcastHistoryIdx(newIdx)
+        setBroadcastCmd(broadcastHistory[newIdx])
+      } else if (broadcastHistoryIdx > 0) {
+        const newIdx = broadcastHistoryIdx - 1
+        setBroadcastHistoryIdx(newIdx)
+        setBroadcastCmd(broadcastHistory[newIdx])
+      }
+    } else if (e.key === 'ArrowDown') {
+      if (broadcastHistoryIdx === -1) return
+      e.preventDefault()
+      if (broadcastHistoryIdx < broadcastHistory.length - 1) {
+        const newIdx = broadcastHistoryIdx + 1
+        setBroadcastHistoryIdx(newIdx)
+        setBroadcastCmd(broadcastHistory[newIdx])
+      } else {
+        setBroadcastHistoryIdx(-1)
+        setBroadcastCmd(broadcastDraft)
+      }
+    }
+  }
+
+  // Node Tile History Up/Down Handler
+  const handleNodeKeyDown = (nodeId: string, e: React.KeyboardEvent<HTMLInputElement>) => {
+    const history = nodeHistories[nodeId] || []
+    const currentIdx = nodeHistoryIdx[nodeId] ?? -1
+
+    if (e.key === 'ArrowUp') {
+      if (history.length === 0) return
+      e.preventDefault()
+      if (currentIdx === -1) {
+        setNodeDrafts(prev => ({ ...prev, [nodeId]: cmdInputs[nodeId] || '' }))
+        const newIdx = history.length - 1
+        setNodeHistoryIdx(prev => ({ ...prev, [nodeId]: newIdx }))
+        setCmdInputs(prev => ({ ...prev, [nodeId]: history[newIdx] }))
+      } else if (currentIdx > 0) {
+        const newIdx = currentIdx - 1
+        setNodeHistoryIdx(prev => ({ ...prev, [nodeId]: newIdx }))
+        setCmdInputs(prev => ({ ...prev, [nodeId]: history[newIdx] }))
+      }
+    } else if (e.key === 'ArrowDown') {
+      if (currentIdx === -1) return
+      e.preventDefault()
+      if (currentIdx < history.length - 1) {
+        const newIdx = currentIdx + 1
+        setNodeHistoryIdx(prev => ({ ...prev, [nodeId]: newIdx }))
+        setCmdInputs(prev => ({ ...prev, [nodeId]: history[newIdx] }))
+      } else {
+        setNodeHistoryIdx(prev => ({ ...prev, [nodeId]: -1 }))
+        setCmdInputs(prev => ({ ...prev, [nodeId]: nodeDrafts[nodeId] || '' }))
+      }
+    }
+  }
+
+  // Global Keyboard Shortcuts (1, 2, 3, /, r, n, ?, Esc)
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      const activeEl = document.activeElement
+      const isInputActive =
+        activeEl instanceof HTMLInputElement ||
+        activeEl instanceof HTMLTextAreaElement ||
+        (activeEl as HTMLElement)?.isContentEditable
+
+      if (e.key === 'Escape') {
+        if (isNodeDrawerOpen) {
+          setIsNodeDrawerOpen(false)
+          return
+        }
+        if (isShortcutsOpen) {
+          setIsShortcutsOpen(false)
+          return
+        }
+        if (isInputActive && activeEl instanceof HTMLElement) {
+          activeEl.blur()
+          return
+        }
+      }
+
+      // Do not trigger global navigation shortcuts while user is actively typing
+      if (isInputActive) return
+
+      if (e.key === '1') {
+        e.preventDefault()
+        setCurrentTab('fleet')
+      } else if (e.key === '2') {
+        e.preventDefault()
+        setCurrentTab('history')
+      } else if (e.key === '3') {
+        e.preventDefault()
+        setCurrentTab('metrics')
+      } else if (e.key === 'n' || e.key === 'N') {
+        e.preventDefault()
+        setIsNodeDrawerOpen(prev => !prev)
+      } else if (e.key === '?') {
+        e.preventDefault()
+        setIsShortcutsOpen(prev => !prev)
+      } else if (e.key === '/') {
+        e.preventDefault()
+        if (currentTab === 'history') {
+          const searchInput = document.querySelector('.search-input') as HTMLInputElement
+          if (searchInput) searchInput.focus()
+        } else {
+          const broadcastInput = document.querySelector('.broadcast-input') as HTMLInputElement
+          if (broadcastInput) broadcastInput.focus()
+        }
+      }
+    }
+
+    window.addEventListener('keydown', handleGlobalKeyDown)
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown)
+  }, [isNodeDrawerOpen, isShortcutsOpen, currentTab])
+
+  const handleBroadcast = (cmdToRun?: string) => {
+    const cmd = (cmdToRun || broadcastCmd).trim()
+    if (!cmd || isBroadcasting) return
+
+    // Save to command history
+    setBroadcastHistory(prev => {
+      const filtered = prev.filter(c => c !== cmd)
+      const next = [...filtered, cmd].slice(-50)
+      try { localStorage.setItem('msh_broadcast_history', JSON.stringify(next)) } catch {}
+      return next
+    })
+    setBroadcastHistoryIdx(-1)
+    setBroadcastDraft('')
+
+    setIsBroadcasting(true)
+    const targets = broadcastTarget === 'all'
+      ? nodes.map(n => n.id)
+      : [broadcastTarget]
+
+    targets.forEach(nodeId => {
+      if (sessions[nodeId] === undefined) {
+        connectTerminal(nodeId)
+      }
+      setTimeout(() => {
+        runCommandOnNode(nodeId, cmd)
+      }, 100)
+    })
+
+    setBroadcastSuccess(true)
+    setTimeout(() => {
+      setIsBroadcasting(false)
+      setBroadcastSuccess(false)
+    }, 1600)
+  }
+
+  const copyLogs = (nodeId: string) => {
+    const text = (sessions[nodeId] || []).join('\n')
+    navigator.clipboard.writeText(text)
+    setCopiedLogs(prev => ({ ...prev, [nodeId]: true }))
+    setTimeout(() => setCopiedLogs(prev => ({ ...prev, [nodeId]: false })), 2000)
+  }
+
+  const downloadLogs = async (nodeId: string) => {
+    const text = (sessions[nodeId] || []).join('\n')
+    const fileName = `daemon-${nodeId.slice(0, 8)}-logs.txt`
+
+    // Open native folder/file picker if supported
+    if ('showSaveFilePicker' in window) {
+      try {
+        const handle = await (window as any).showSaveFilePicker({
+          suggestedName: fileName,
+          types: [{
+            description: 'Text Log File',
+            accept: { 'text/plain': ['.txt', '.log'] }
+          }]
+        })
+        const writable = await handle.createWritable()
+        await writable.write(text)
+        await writable.close()
+        return
+      } catch (err: any) {
+        if (err.name === 'AbortError') return
+        console.warn('showSaveFilePicker failed, falling back to download:', err)
+      }
+    }
+
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = fileName
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
 
   const copyNodeId = (id: string, e: React.MouseEvent) => {
     e.stopPropagation()
@@ -68,6 +311,18 @@ function App() {
 
   const runCommandOnNode = (nodeId: string, cmd: string) => {
     if (!cmd.trim() || runningCmds[nodeId]) return
+
+    // Save to per-node command history
+    setNodeHistories(prev => {
+      const list = (prev[nodeId] || []).filter(c => c !== cmd)
+      const nextList = [...list, cmd].slice(-50)
+      const next = { ...prev, [nodeId]: nextList }
+      try { localStorage.setItem('msh_node_histories', JSON.stringify(next)) } catch {}
+      return next
+    })
+    setNodeHistoryIdx(prev => ({ ...prev, [nodeId]: -1 }))
+    setNodeDrafts(prev => ({ ...prev, [nodeId]: '' }))
+
     setRunningCmds(prev => ({ ...prev, [nodeId]: true }))
 
     const loc = window.location
@@ -103,7 +358,7 @@ function App() {
             }))
             setSessions(prev => ({
               ...prev,
-              [nodeId]: [...(prev[nodeId] || []), `[⚠️ Prompt: ${msg.prompt || 'Input required'}]`]
+              [nodeId]: [...(prev[nodeId] || []), `[Prompt: ${msg.prompt || 'Input required'}]`]
             }))
           } else if (msg.type === 'result') {
             setActivePrompts(prev => {
@@ -250,19 +505,20 @@ function App() {
     wsRefs.current = {}
     setSessions({})
     setClosed({})
-    setMaximizedNode(null)
     setToken('')
     setIsAuthenticated(false)
     localStorage.removeItem('msh_fleet_token')
   }
 
-  // Auto-scroll each active terminal tile
+  // Auto-scroll each active terminal tile (respecting followLogs setting)
   useEffect(() => {
     Object.keys(sessions).forEach(id => {
-      const el = tileRefs.current[id]
-      if (el) el.scrollTop = el.scrollHeight
+      if (followLogs[id] !== false) {
+        const el = tileRefs.current[id]
+        if (el) el.scrollTop = el.scrollHeight
+      }
     })
-  }, [sessions])
+  }, [sessions, followLogs])
 
   const isLive = (nodeId: string) =>
     sessions[nodeId] !== undefined && !closed[nodeId]
@@ -344,17 +600,10 @@ function App() {
       delete next[nodeId]
       return next
     })
-    if (maximizedNode === nodeId) {
-      setMaximizedNode(null)
-    }
   }
 
   const clearTerminal = (nodeId: string) => {
     setSessions(prev => ({ ...prev, [nodeId]: [] }))
-  }
-
-  const toggleMaximize = (nodeId: string) => {
-    setMaximizedNode(prev => (prev === nodeId ? null : nodeId))
   }
 
   const connectAll = () => {
@@ -396,7 +645,6 @@ function App() {
     })
     setSessions({})
     setClosed({})
-    setMaximizedNode(null)
   }
 
   const nodeTitle = (nodeId: string) =>
@@ -406,12 +654,29 @@ function App() {
   const totalSessions = Object.keys(sessions).length
 
   const renderLiveFleet = () => {
-    const displayedNodes = maximizedNode
-      ? [maximizedNode].filter(id => sessions[id] !== undefined)
-      : Object.keys(sessions)
+    const displayedNodes = Object.keys(sessions)
 
     return (
-      <div className="fleet-layout">
+      <div className="fleet-page-wrapper">
+        <div className="editorial-hero">
+          <div className="hero-header-flex">
+            <div className="hero-emblem-wrap">
+              <MshLogo size={46} className="hero-msh-logo" />
+            </div>
+            <div className="hero-header-text">
+              <div className="hero-kicker-row">
+                <span className="hero-kicker-pill">~ SRE fleet gauntlet ~</span>
+                <span className="hero-kicker-text">Live Daemon Telemetry · Parallel Terminal Grid</span>
+              </div>
+              <h1 className="hero-headline">Autonomous Fleet Orchestration & Telemetry</h1>
+              <p className="hero-subtext">
+                Deterministic execution monitoring, auto-scaling daemons, and concurrent stream traces across your active nodes.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="fleet-layout">
         <div className="nodes-panel">
           <div className="panel-header">
             <div>
@@ -452,7 +717,7 @@ function App() {
                     title="Click to copy node ID"
                   >
                     <span className="node-id-text">{node.id}</span>
-                    <span className="copy-label">{copiedId === node.id ? '✓' : '⧉'}</span>
+                    <span className="copy-label">{copiedId === node.id ? <CheckIcon size={12} /> : <CopyIcon size={12} />}</span>
                   </div>
                   <div className="node-card-actions">
                     <button
@@ -483,49 +748,6 @@ function App() {
             </div>
 
             <div className="toolbar-right">
-              {totalSessions > 0 && !maximizedNode && (
-                <div className="layout-picker">
-                  <span className="layout-label">Layout:</span>
-                  <button
-                    className={`btn-layout ${gridLayout === 'auto' ? 'active' : ''}`}
-                    onClick={() => setGridLayout('auto')}
-                    title="Auto Grid"
-                  >
-                    Auto
-                  </button>
-                  <button
-                    className={`btn-layout ${gridLayout === '1' ? 'active' : ''}`}
-                    onClick={() => setGridLayout('1')}
-                    title="1 Column"
-                  >
-                    1 Col
-                  </button>
-                  <button
-                    className={`btn-layout ${gridLayout === '2' ? 'active' : ''}`}
-                    onClick={() => setGridLayout('2')}
-                    title="2 Columns"
-                  >
-                    2 Col
-                  </button>
-                  <button
-                    className={`btn-layout ${gridLayout === '3' ? 'active' : ''}`}
-                    onClick={() => setGridLayout('3')}
-                    title="3 Columns"
-                  >
-                    3 Col
-                  </button>
-                </div>
-              )}
-
-              {maximizedNode && (
-                <button
-                  className="btn-toolbar btn-restore"
-                  onClick={() => setMaximizedNode(null)}
-                >
-                  Restore Grid
-                </button>
-              )}
-
               {totalSessions > 0 && (
                 <>
                   <button className="btn-toolbar" onClick={clearAll} title="Clear all terminal logs">
@@ -536,6 +758,94 @@ function App() {
                   </button>
                 </>
               )}
+            </div>
+          </div>
+
+          {/* Swarm Broadcast Command Bar */}
+          <div className="broadcast-bar">
+            <div className="broadcast-header">
+              <div className="broadcast-title">
+                <RadioIcon size={15} className={`broadcast-icon ${isBroadcasting ? 'pulse-icon' : ''}`} />
+                <span>Swarm Broadcast</span>
+                <span className="broadcast-badge">{nodes.length} node{nodes.length === 1 ? '' : 's'} available</span>
+              </div>
+              <div className="broadcast-target-picker">
+                <label htmlFor="broadcast-target-select">Target:</label>
+                <select
+                  id="broadcast-target-select"
+                  value={broadcastTarget}
+                  onChange={(e) => setBroadcastTarget(e.target.value)}
+                  className="broadcast-select"
+                >
+                  <option value="all">All Daemons ({nodes.length})</option>
+                  {nodes.map(n => (
+                    <option key={n.id} value={n.id}>
+                      {n.hostname} ({n.id.slice(0, 8)})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <form
+              className="broadcast-form"
+              onSubmit={(e) => {
+                e.preventDefault()
+                handleBroadcast()
+              }}
+            >
+              <div className="broadcast-input-wrap">
+                <span className="broadcast-prompt">$</span>
+                <input
+                  type="text"
+                  className="broadcast-input"
+                  placeholder="Broadcast command across selected daemons concurrently... (↑/↓ for history)"
+                  value={broadcastCmd}
+                  onChange={(e) => setBroadcastCmd(e.target.value)}
+                  onKeyDown={handleBroadcastKeyDown}
+                  disabled={nodes.length === 0}
+                />
+              </div>
+              <button
+                type="submit"
+                className={`btn-broadcast ${broadcastSuccess ? 'btn-success' : ''}`}
+                disabled={isBroadcasting || !broadcastCmd.trim() || nodes.length === 0}
+              >
+                {isBroadcasting ? (
+                  <>
+                    <RadioIcon size={13} className="icon-spin" />
+                    <span>Dispatching...</span>
+                  </>
+                ) : broadcastSuccess ? (
+                  <>
+                    <CheckIcon size={13} />
+                    <span>Dispatched!</span>
+                  </>
+                ) : (
+                  <>
+                    <SendIcon size={13} />
+                    <span>Broadcast</span>
+                  </>
+                )}
+              </button>
+            </form>
+
+            <div className="broadcast-presets">
+              <span className="presets-label">Quick Presets:</span>
+              {['git status', 'uptime', 'whoami', 'df -h', 'docker ps'].map(preset => (
+                <button
+                  key={preset}
+                  type="button"
+                  className="btn-preset"
+                  onClick={() => {
+                    setBroadcastCmd(preset)
+                    handleBroadcast(preset)
+                  }}
+                  disabled={nodes.length === 0}
+                >
+                  {preset}
+                </button>
+              ))}
             </div>
           </div>
 
@@ -558,15 +868,22 @@ function App() {
               )}
             </div>
           ) : (
-            <div className={`terminal-grid layout-${gridLayout} ${maximizedNode ? 'has-maximized' : ''} ${displayedNodes.length === 1 && !maximizedNode ? 'single-item' : ''}`}>
+            <div className={`terminal-grid ${displayedNodes.length === 1 ? 'single-item' : ''}`}>
               {displayedNodes.map(nodeId => {
                 const live = isLive(nodeId)
-                const isMax = maximizedNode === nodeId
-                const lineCount = (sessions[nodeId] || []).length
+                const rawLogs = sessions[nodeId] || []
+                const lineCount = rawLogs.length
+                const filterQuery = (logFilters[nodeId] || '').trim().toLowerCase()
+                const displayedLogs = filterQuery
+                  ? rawLogs.filter(log => log.toLowerCase().includes(filterQuery))
+                  : rawLogs
+                const isFilterActive = showFilter[nodeId]
+                const isFollowing = followLogs[nodeId] !== false
+
                 return (
                   <div
                     key={nodeId}
-                    className={`terminal-tile ${isMax ? 'maximized' : ''} ${live ? 'is-live' : 'is-closed'}`}
+                    className={`terminal-tile ${live ? 'is-live' : 'is-closed'}`}
                   >
                     <div className="panel-header tile-header">
                       <div className="tile-title">
@@ -579,7 +896,8 @@ function App() {
                             onClick={(e) => copyNodeId(nodeId, e)}
                             title="Click to copy node ID"
                           >
-                            {nodeId} {copiedId === nodeId ? '✓' : ''}
+                            <span>{nodeId}</span>
+                            {copiedId === nodeId && <CheckIcon size={11} className="tile-copy-icon" />}
                           </span>
                         </div>
                       </div>
@@ -591,6 +909,46 @@ function App() {
                         ) : (
                           <span className="closed-badge">Paused</span>
                         )}
+
+                        {/* In-Terminal Filter Toggle */}
+                        <button
+                          className={`btn-tile-action ${isFilterActive ? 'active' : ''}`}
+                          onClick={() => setShowFilter(prev => ({ ...prev, [nodeId]: !prev[nodeId] }))}
+                          title="Search and filter output lines"
+                        >
+                          <SearchIcon size={12} />
+                          <span>Filter</span>
+                        </button>
+
+                        {/* Follow Logs / Scroll Lock Toggle */}
+                        <button
+                          className={`btn-tile-action ${isFollowing ? 'active' : ''}`}
+                          onClick={() => setFollowLogs(prev => ({ ...prev, [nodeId]: prev[nodeId] === false }))}
+                          title={isFollowing ? "Auto-scroll ON: clicks will pause auto-scroll" : "Auto-scroll PAUSED: click to follow new output"}
+                        >
+                          <ArrowDownIcon size={12} />
+                          <span>{isFollowing ? 'Follow' : 'Hold'}</span>
+                        </button>
+
+                        {/* Copy Logs */}
+                        <button
+                          className="btn-tile-action"
+                          onClick={() => copyLogs(nodeId)}
+                          title="Copy all logs to clipboard"
+                        >
+                          {copiedLogs[nodeId] ? <CheckIcon size={12} /> : <CopyIcon size={12} />}
+                          <span>{copiedLogs[nodeId] ? 'Copied' : 'Copy'}</span>
+                        </button>
+
+                        {/* Download Logs */}
+                        <button
+                          className="btn-tile-action"
+                          onClick={() => downloadLogs(nodeId)}
+                          title="Download logs as .txt file"
+                        >
+                          <DownloadIcon size={12} />
+                        </button>
+
                         <button
                           className="btn-tile-action"
                           onClick={() => clearTerminal(nodeId)}
@@ -616,29 +974,51 @@ function App() {
                           </button>
                         )}
                         <button
-                          className="btn-tile-action"
-                          onClick={() => toggleMaximize(nodeId)}
-                          title={isMax ? "Restore tile" : "Maximize tile"}
-                        >
-                          {isMax ? 'Restore' : 'Expand'}
-                        </button>
-                        <button
                           className="btn-tile-close"
                           onClick={() => closeTerminal(nodeId)}
                           title="Close terminal tile"
                         >
-                          ✕
+                          <XIcon size={13} />
                         </button>
                       </div>
                     </div>
+
+                    {/* Inline Filter Bar */}
+                    {isFilterActive && (
+                      <div className="tile-filter-bar">
+                        <SearchIcon size={12} className="tile-filter-icon" />
+                        <input
+                          type="text"
+                          className="tile-filter-input"
+                          placeholder="Filter log lines by keyword..."
+                          value={logFilters[nodeId] || ''}
+                          onChange={(e) => setLogFilters(prev => ({ ...prev, [nodeId]: e.target.value }))}
+                          autoFocus
+                        />
+                        {logFilters[nodeId] && (
+                          <button
+                            className="btn-clear-filter"
+                            onClick={() => setLogFilters(prev => ({ ...prev, [nodeId]: '' }))}
+                            title="Clear filter query"
+                          >
+                            <XIcon size={11} />
+                          </button>
+                        )}
+                      </div>
+                    )}
+
                     <div
                       className="terminal tile-terminal"
                       ref={el => { tileRefs.current[nodeId] = el }}
                     >
                       {lineCount === 0 ? (
                         <div className="terminal-waiting">Waiting for execution output...</div>
+                      ) : filterQuery && displayedLogs.length === 0 ? (
+                        <div className="terminal-filter-empty">
+                          No lines match filter "{logFilters[nodeId]}" ({lineCount} total lines)
+                        </div>
                       ) : (
-                        (sessions[nodeId] || []).map((log, i) => (
+                        displayedLogs.map((log, i) => (
                           <div key={i} className="log-line">{log}</div>
                         ))
                       )}
@@ -646,7 +1026,9 @@ function App() {
                     {activePrompts[nodeId] && (
                       <div className="tile-prompt-banner">
                         <div className="prompt-header">
-                          <span className="prompt-icon">⚠️</span>
+                          <span className="prompt-icon">
+                            <AlertTriangleIcon size={14} />
+                          </span>
                           <span className="prompt-title">Interactive Prompt Detected</span>
                           <span className="prompt-pulse" />
                         </div>
@@ -712,9 +1094,10 @@ function App() {
                       <input
                         type="text"
                         className="tile-exec-input"
-                        placeholder={`Execute command on ${nodeTitle(nodeId)} (e.g. dir, git status, whoami)...`}
+                        placeholder={`Execute command on ${nodeTitle(nodeId)} (↑/↓ for history)...`}
                         value={cmdInputs[nodeId] || ''}
                         onChange={(e) => setCmdInputs(prev => ({ ...prev, [nodeId]: e.target.value }))}
+                        onKeyDown={(e) => handleNodeKeyDown(nodeId, e)}
                       />
                       <button
                         type="submit"
@@ -731,6 +1114,7 @@ function App() {
           )}
         </div>
       </div>
+      </div>
     )
   }
 
@@ -738,7 +1122,10 @@ function App() {
     <div className="app-container">
       {!isAuthenticated ? (
         <div className="login-container" style={{ maxWidth: '400px', margin: '4rem auto', textAlign: 'center' }}>
-          <h2 className="page-title" style={{ marginBottom: '1rem' }}>Fleet Authentication</h2>
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1.25rem' }}>
+            <MshLogo size={56} />
+          </div>
+          <h2 className="page-title" style={{ marginBottom: '0.5rem' }}>Fleet Authentication</h2>
           <p className="empty-desc" style={{ marginBottom: '2rem' }}>Enter the admin token generated by `msh fleet start`</p>
           <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <input
@@ -784,15 +1171,57 @@ function App() {
         <>
           <nav className="navbar">
             <div className="navbar-brand">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 17l6-6-6-6M12 19h8"/></svg>
-              msh fleet
+              <div className="brand-logo-badge">
+                <MshLogo size={28} />
+              </div>
+              <span className="brand-title">msh fleet</span>
+              <span className="brand-pill">~ swarm 1.4 ~</span>
             </div>
-            <div className="navbar-links">
-              <button className={`nav-link ${currentTab === 'fleet' ? 'active' : ''}`} onClick={() => setCurrentTab('fleet')}>Live Fleet</button>
-              <button className={`nav-link ${currentTab === 'history' ? 'active' : ''}`} onClick={() => setCurrentTab('history')}>History</button>
-              <button className={`nav-link ${currentTab === 'metrics' ? 'active' : ''}`} onClick={() => setCurrentTab('metrics')}>Metrics</button>
+
+            <div className="navbar-center">
+              <div className="nav-pill-group">
+                <button
+                  className={`nav-pill ${currentTab === 'fleet' ? 'active' : ''}`}
+                  onClick={() => setCurrentTab('fleet')}
+                >
+                  <ServerIcon size={13} />
+                  <span>Live Fleet</span>
+                </button>
+                <button
+                  className={`nav-pill ${currentTab === 'history' ? 'active' : ''}`}
+                  onClick={() => setCurrentTab('history')}
+                >
+                  <ClockIcon size={13} />
+                  <span>History</span>
+                </button>
+                <button
+                  className={`nav-pill ${currentTab === 'metrics' ? 'active' : ''}`}
+                  onClick={() => setCurrentTab('metrics')}
+                >
+                  <TrendingUpIcon size={13} />
+                  <span>Metrics</span>
+                </button>
+              </div>
             </div>
+
             <div className="navbar-actions">
+              <button
+                type="button"
+                className="cluster-status-pill cluster-status-btn"
+                onClick={() => setIsNodeDrawerOpen(true)}
+                title="View Connected Swarm Daemons (Press 'n')"
+              >
+                <span className="status-live-dot" />
+                <span>{nodes.length} {nodes.length === 1 ? 'node' : 'nodes'} online</span>
+              </button>
+              <button
+                type="button"
+                className="btn-kbd-help"
+                onClick={() => setIsShortcutsOpen(true)}
+                title="Keyboard Shortcuts (Press '?')"
+              >
+                <span className="mono">?</span>
+              </button>
               <button className="btn-logout" onClick={handleLogout}>Logout</button>
             </div>
           </nav>
@@ -802,6 +1231,23 @@ function App() {
             {currentTab === 'history' && <History token={token} nodes={nodes} onRerun={handleRerunCommand} />}
             {currentTab === 'metrics' && <Metrics token={token} />}
           </main>
+
+          <NodeDrawer
+            isOpen={isNodeDrawerOpen}
+            onClose={() => setIsNodeDrawerOpen(false)}
+            nodes={nodes}
+            token={token}
+            onFocusNode={(nodeId) => {
+              setCurrentTab('fleet')
+              if (sessions[nodeId] === undefined) {
+                connectTerminal(nodeId)
+              }
+            }}
+          />
+          <ShortcutsModal
+            isOpen={isShortcutsOpen}
+            onClose={() => setIsShortcutsOpen(false)}
+          />
         </>
       )}
     </div>

@@ -41,7 +41,7 @@ echo "==> Finding latest release of msh..."
 LATEST_TAG=$(curl -s "https://api.github.com/repos/${REPO}/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
 
 if [ -z "$LATEST_TAG" ]; then
-  LATEST_TAG="v1.3.0"
+  LATEST_TAG="v1.4.0"
 fi
 
 FILENAME="msh-${LATEST_TAG}-${OS}-${ARCH}.tar.gz"
