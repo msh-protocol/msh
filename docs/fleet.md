@@ -33,6 +33,10 @@ The daemon will automatically register itself with the hub and establish a persi
 Open `http://127.0.0.1:9000` in your browser. 
 You will be prompted for your Admin Token. Once authenticated, you will see a real-time list of all connected daemons.
 
+<p align="center">
+  <img src="assets/fleet-dashboard.png" alt="msh fleet Autonomous Orchestration & Telemetry Dashboard" width="100%" />
+</p>
+
 ## Features
 
 ### Reverse NAT Tunneling
