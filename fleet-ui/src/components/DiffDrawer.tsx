@@ -7,7 +7,8 @@ import {
   ServerIcon,
   RotateCcwIcon,
   ColumnsIcon,
-  RowsIcon
+  RowsIcon,
+  AlertTriangleIcon
 } from './Icons'
 import './DiffDrawer.css'
 
@@ -520,7 +521,7 @@ export function DiffDrawer({
         )}
         {revertError && (
           <div className="diff-banner diff-banner-error mono">
-            <span className="diff-banner-icon">⚠️</span>
+            <span className="diff-banner-icon"><AlertTriangleIcon size={13} /></span>
             <span className="diff-banner-text">{revertError}</span>
             <button
               type="button"

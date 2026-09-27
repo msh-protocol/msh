@@ -47,6 +47,16 @@
 *.db            binary
 
 # GitHub Linguist Language Detection Overrides
-fleet-ui/dist/**        linguist-vendored
-scratch/**              linguist-vendored
-*.log                   linguist-vendored
+# Vendor & exclude Fleet UI, auxiliary SDK packages, scripts, tests, and styles from repository language statistics
+fleet-ui/**             linguist-vendored -linguist-detectable
+packages/**             linguist-vendored -linguist-detectable
+evals/**                linguist-vendored -linguist-detectable
+scratch/**              linguist-vendored -linguist-detectable
+scripts/**              linguist-vendored -linguist-detectable
+test_*.py               linguist-vendored -linguist-detectable
+test_*.txt              linguist-vendored
+*.css                   linguist-vendored -linguist-detectable
+*.ts                    linguist-vendored -linguist-detectable
+*.tsx                   linguist-vendored -linguist-detectable
+*.html                  linguist-vendored -linguist-detectable
+*.log                   linguist-vendored -linguist-detectable

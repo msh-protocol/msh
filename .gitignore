@@ -32,6 +32,7 @@ Thumbs.db
 
 # Build output
 dist/
+!fleet-ui/dist/
 bin/
 
 

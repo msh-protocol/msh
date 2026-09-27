@@ -8,7 +8,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.4.0] - 2026-09-21
+### Changed
+- **Guardrails Theme Harmonization & Vector Icons Upgrade** — Rethemed all Guardrails dashboard components to strictly adhere to the Vintage Literary Print / Bookbinder Editorial design system (Aged Book Paper `#fdfcf9` / `#eee8dc`, Warm Book Margin Rules `#ded7c7`, and Walnut / Lampblack Inks `#5c3a2e` / `#231f1d`), eliminating pitch-black containers and unreadable dark table headers. Replaced all raw OS emojis across navbar tabs, buttons, simulator banners, and the execution history ledger with calibrated SVG vector icons (`ShieldCheckIcon`, `ShieldAlertIcon`, `ZapIcon`, `AlertTriangleIcon`, `CheckIcon`, `SearchIcon`).
+- **Development Guidelines Enforced in `.agents`** — Codified strict UI design rules in [`.agents/AGENTS.md`](file:///c:/Users/tesse/Desktop/msh-protocol/.agents/AGENTS.md) requiring all future UI additions to maintain the Bookbinder Editorial theme and forbidding raw OS emojis in favor of SVG stroke components.
+
+## [1.5.0] - 2026-09-23
+
+### Added
+- **Pre-Execution Guardrails & Policy Engine** — Implemented a comprehensive three-tier security defense architecture (`pkg/guard`) designed specifically for autonomous agent tool use (arXiv:2607.22569, arXiv:2512.12806). Evaluates commands before spawning an OS process, blocking catastrophic deletions, drive wipes, fork bombs, and raw filesystem formatting with zero CPU execution time wasted.
+- **Tier 1 Catastrophic Safety Floor (Always Active)** — Hard-coded baseline blocking root and home deletions (`rm -rf /`, `rm -rf ~`), Windows recursive drive wipes (`rmdir /s /q C:\`), fork bombs (`:(){ :|:& };:`), raw disk zeroing (`dd ... of=/dev/sd*`), disk formatting (`mkfs.*`, `Format-Volume`), and recursive root permission changes (`chmod -R 777 /`).
+- **Tier 2 Configurable Project Policies (`.msh/policies.yaml`)** — Project-level security policy engine supporting regular expression pattern matching, risk tiers (`critical`, `high`, `moderate`, `low`), custom enforcement actions (`block` or `warn`), and explicit allowed/denied path boundaries.
+- **Tier 3 Strict Workspace Confinement (`--strict-workspace`)** — Zero-trust path traversal boundary enforcement blocking commands that attempt to escape project directories (`../../`), target system configuration roots (`/etc/`, `/var/`, `C:\Windows\`), or access sensitive credential vaults (`~/.ssh`, `~/.aws`).
+- **New CLI Subcommands (`msh guard`)**:
+  - `msh guard check "<cmd>"` — Pre-evaluates any command line against active policies without spawning a process; supports `--strict-workspace` and `--json`.
+  - `msh guard list` — Displays active security policies, actions, risk ratings, and regex match patterns.
+  - `msh guard init` — Scaffolds a starter `.msh/policies.yaml` file with production templates and explanations.
+- **Root & Passthrough Execution Flags**:
+  - Added `--strict-workspace` to `msh exec`, `msh wrap`, and smart passthrough mode.
+  - Added `--no-guard` escape hatch to bypass policy checks in trusted administrative sessions.
+- **Fleet UI Guardrails Management Dashboard & Interactive Simulator** — Added a dedicated `🛡️ Guardrails` tab to the embedded control plane featuring Three-Tier defense cards, an interactive pre-execution command simulator with sample attack triggers, and an active security policies matrix table.
+- **History Docket Security Badges & Guardrail Filter** — Added `[ 🛡️ blocked ]` and `[ ⚠️ warn ]` status badges in the execution history ledger, a dedicated `🛡️ Guardrails` filter pill, and a rich expandable security violation inspector displaying rule IDs, risk levels, and policy guidance.
+- **GitHub Linguist Language Overrides** — Configured `.gitattributes` to vendor embedded frontend assets (`fleet-ui/**`), auxiliary SDKs (`packages/**`), evals, and scripts, unsetting `linguist-detectable` on CSS, TypeScript, TSX, and HTML so repository statistics accurately reflect Go as the primary systems language.
+
 
 ### Added
 - **Binary Asset Rollback Safeguards & Native In-Drawer Error Banners** — Eliminated raw browser `alert()` modal dialogs across the dashboard in favor of animated, in-drawer status and error banners matching the vintage editorial theme. Enhanced binary asset handling for compiled machine code (`.exe`, `.dll`, `.so`, `.dylib`, etc.): the Binary Specimen Card now displays an informative warning badge explaining that machine payloads lack textual patch history, cleanly disables the rollback button, and skips binary assets during full-run rollbacks so valid source code files can still be restored cleanly without failure.

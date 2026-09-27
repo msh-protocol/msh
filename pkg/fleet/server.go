@@ -21,6 +21,7 @@ import (
 	"github.com/msh-protocol/msh/pkg/db"
 	"github.com/msh-protocol/msh/pkg/execution"
 	mshfs "github.com/msh-protocol/msh/pkg/fs"
+	"github.com/msh-protocol/msh/pkg/guard"
 	"github.com/msh-protocol/msh/pkg/protocol"
 )
 
@@ -85,6 +86,8 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/diff", s.handleDiff)
 	mux.HandleFunc("/api/rollback", s.handleRollback)
 	mux.HandleFunc("/api/verify", s.handleVerify)
+	mux.HandleFunc("/api/policies", s.handlePolicies)
+	mux.HandleFunc("/api/guard/check", s.handleGuardCheck)
 	mux.HandleFunc("/stream/daemon", s.handleStreamDaemon)
 	mux.HandleFunc("/stream/exec", s.handleStreamExec)
 
@@ -983,4 +986,73 @@ func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
+}
+
+func (s *Server) handlePolicies(w http.ResponseWriter, r *http.Request) {
+	if s.token != "" && !protocol.SecureCompare(r.Header.Get("Authorization"), "Bearer "+s.token) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	cwd, _ := os.Getwd()
+	cfg, err := guard.LoadConfig(cwd)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to load policies: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(cfg)
+}
+
+func (s *Server) handleGuardCheck(w http.ResponseWriter, r *http.Request) {
+	if s.token != "" && !protocol.SecureCompare(r.Header.Get("Authorization"), "Bearer "+s.token) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var payload struct {
+		Command         string `json:"command"`
+		Cwd             string `json:"cwd"`
+		StrictWorkspace bool   `json:"strict_workspace"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	workspace := payload.Cwd
+	if workspace == "" {
+		workspace, _ = os.Getwd()
+	}
+
+	cfg, err := guard.LoadConfig(workspace)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to load policies: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	res := guard.Evaluate(payload.Command, workspace, cfg, payload.StrictWorkspace, false)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(res)
 }
