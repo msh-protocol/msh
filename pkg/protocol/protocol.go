@@ -94,6 +94,13 @@ type ExecRequest struct {
 
 	// KubernetesNamespace specifies the namespace to use if Engine is "kubernetes".
 	KubernetesNamespace string `json:"kubernetes_namespace,omitempty"`
+
+	// StrictWorkspace enforces that file targets and arguments stay strictly
+	// within the project workspace boundary, preventing traversal escapes.
+	StrictWorkspace bool `json:"strict_workspace,omitempty"`
+
+	// NoGuard bypasses pre-execution policy and guardrail checks when true.
+	NoGuard bool `json:"no_guard,omitempty"`
 }
 
 // ExecResponse defines the structured output contract returned by msh
@@ -164,10 +171,24 @@ type ExecResponse struct {
 	// manifest (command, cwd, output, exit code, diffs) for run verification.
 	RunHash string `json:"run_hash,omitempty"`
 
+	// RiskLevel indicates the evaluated risk tier of the command ("low", "moderate", "high", "critical").
+	RiskLevel string `json:"risk_level,omitempty"`
+
+	// PolicyViolations lists any triggered guardrail rules from default safety or .msh/policies.yaml.
+	PolicyViolations []PolicyViolation `json:"policy_violations,omitempty"`
+
 	// Error contains a human-readable error description when the
 	// command fails to execute (e.g., binary not found, permission denied).
 	// This is distinct from stderr, which captures process output.
 	Error string `json:"error,omitempty"`
+}
+
+// PolicyViolation represents a rule triggered during pre-execution guardrail evaluation.
+type PolicyViolation struct {
+	RuleID  string `json:"rule_id"`
+	Risk    string `json:"risk"`
+	Action  string `json:"action"`
+	Message string `json:"message"`
 }
 
 // ToJSON serializes the ExecResponse to a compact JSON byte slice.
@@ -198,7 +219,7 @@ const DefaultMaxOutputLines = 200
 const DefaultTimeout = 30 * time.Second
 
 // Version is the current version of the msh protocol.
-const Version = "1.4.0"
+const Version = "1.5.0"
 
 // HookResult records the outcome of a pre/post execution hook.
 type HookResult struct {

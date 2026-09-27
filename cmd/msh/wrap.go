@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/msh-protocol/msh/pkg/db"
 	"github.com/msh-protocol/msh/pkg/execution"
@@ -29,6 +30,8 @@ func init() {
 	wrapCmd.Flags().StringVar(&flagEnvFile, "env-file", "", "Path to a .env file to load before execution")
 	wrapCmd.Flags().BoolVar(&flagNoRedact, "no-redact", false, "Disable secret redaction of command output")
 	wrapCmd.Flags().StringSliceVar(&flagAnswers, "answer", nil, "Answer to feed an interactive prompt (repeatable, used in order when prompts are detected)")
+	wrapCmd.Flags().BoolVar(&flagStrictWorkspace, "strict-workspace", false, "Enforce strict confinement of file writes within workspace")
+	wrapCmd.Flags().BoolVar(&flagNoGuard, "no-guard", false, "Bypass all safety guardrails and policy enforcement")
 }
 
 func runWrap(cmd *cobra.Command, args []string) {
@@ -50,15 +53,17 @@ func runWrap(cmd *cobra.Command, args []string) {
 
 	// Build execution request
 	req := protocol.ExecRequest{
-		Command:        command,
-		Cwd:            flagCwd,
-		Timeout:        timeout,
-		MaxOutputLines: flagMaxLines,
-		DetectFiles:    !flagNoFiles,
-		UsePty:         flagPty,
-		EnvFile:        flagEnvFile,
-		RedactSecrets:  redactFlag(),
-		PromptAnswers:  flagAnswers,
+		Command:         command,
+		Cwd:             flagCwd,
+		Timeout:         timeout,
+		MaxOutputLines:  flagMaxLines,
+		DetectFiles:     !flagNoFiles,
+		UsePty:          flagPty,
+		EnvFile:         flagEnvFile,
+		RedactSecrets:   redactFlag(),
+		PromptAnswers:   flagAnswers,
+		StrictWorkspace: flagStrictWorkspace,
+		NoGuard:         flagNoGuard,
 	}
 
 	// Execute
@@ -79,15 +84,29 @@ func runWrap(cmd *cobra.Command, args []string) {
 		fmt.Fprintln(os.Stderr, resp.Stderr)
 	}
 
+	// Policy warnings (when execution proceeded despite warnings)
+	if len(resp.PolicyViolations) > 0 && resp.Status != protocol.StatusBlocked {
+		for _, v := range resp.PolicyViolations {
+			fmt.Fprintf(os.Stderr, "[msh:guard] policy warning [%s]: %s\n", v.Risk, v.Message)
+		}
+	}
+
 	switch resp.Status {
 	case protocol.StatusBlocked:
-		fmt.Fprintf(os.Stderr, "\n[msh] process killed due to interactive prompt: %s\n", resp.PromptDetected)
+		if len(resp.PolicyViolations) > 0 {
+			fmt.Fprintf(os.Stderr, "\n[msh:guard] execution BLOCKED by security policy [%s risk]: %s\n", resp.RiskLevel, resp.PolicyViolations[0].Message)
+			for i, v := range resp.PolicyViolations {
+				fmt.Fprintf(os.Stderr, "  %d. [%s] %s: %s\n", i+1, strings.ToUpper(v.Risk), v.RuleID, v.Message)
+			}
+		} else {
+			fmt.Fprintf(os.Stderr, "\n[msh] process killed due to interactive prompt: %s\n", resp.PromptDetected)
+		}
 	case protocol.StatusTimeout:
 		fmt.Fprintf(os.Stderr, "\n[msh] process killed due to timeout (%s)\n", flagTimeout)
 	}
 
 	// Exit with the exact exit code of the underlying process
-	// If exit code is -1 (e.g. killed by timeout or prompt), exit with 1
+	// If exit code is -1 (e.g. killed by timeout or prompt or blocked by policy), exit with 1
 	if resp.ExitCode == -1 {
 		os.Exit(1)
 	}

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, Fragment } from 'react'
 import { DiffDrawer } from './DiffDrawer'
 import { ExportModal } from './ExportModal'
+import './Guardrails.css'
 import {
   TerminalIcon,
   FileTextIcon,
@@ -16,7 +17,9 @@ import {
   ArrowDownLeftIcon,
   ArrowUpRightIcon,
   DownloadIcon,
-  Trash2Icon
+  Trash2Icon,
+  ShieldCheckIcon,
+  ShieldAlertIcon
 } from './Icons'
 
 interface ExecutionRecord {
@@ -39,6 +42,8 @@ interface ParsedExecutionRecord extends ExecutionRecord {
   rootCause: any
   runHash: string
   cwd: string
+  policyViolations: any[]
+  riskLevel: string
 }
 
 const DEFAULT_PAGE_SIZE = 15
@@ -100,7 +105,7 @@ export function History({ token, nodes = [], onRerun }: {
 
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState('')
-  const [filter, setFilter] = useState<'all' | 'success' | 'error' | 'diffs' | 'rootcause'>('all')
+  const [filter, setFilter] = useState<'all' | 'success' | 'error' | 'diffs' | 'rootcause' | 'guard'>('all')
   const [autoRefresh, setAutoRefresh] = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [copiedId, setCopiedId] = useState<number | null>(null)
@@ -153,6 +158,8 @@ export function History({ token, nodes = [], onRerun }: {
         rootCause: parsedResp?.error_root_cause || null,
         runHash: parsedResp?.run_hash || '',
         cwd: parsedResp?.cwd || parsedReq?.cwd || '',
+        policyViolations: parsedResp?.policy_violations || [],
+        riskLevel: parsedResp?.risk_level || '',
       }
     })
   }, [records])
@@ -162,6 +169,7 @@ export function History({ token, nodes = [], onRerun }: {
     const errorCount = records.filter(r => r.Status !== 'success').length
     const diffsCount = parsedRecords.filter(r => r.filesChanged.length > 0).length
     const rootCauseCount = parsedRecords.filter(r => !!r.rootCause).length
+    const guardCount = parsedRecords.filter(r => r.Status === 'blocked' || (r.policyViolations && r.policyViolations.length > 0)).length
     const totalDuration = records.reduce((acc, r) => acc + (r.DurationMs || 0), 0)
     const avgDuration = records.length > 0 ? Math.round(totalDuration / records.length) : 0
     const successRate = records.length > 0 ? Math.round((successCount / records.length) * 100) : 100
@@ -171,6 +179,7 @@ export function History({ token, nodes = [], onRerun }: {
       errorCount,
       diffsCount,
       rootCauseCount,
+      guardCount,
       avgDuration,
       successRate
     }
@@ -182,6 +191,7 @@ export function History({ token, nodes = [], onRerun }: {
       if (filter === 'error' && r.Status === 'success') return false
       if (filter === 'diffs' && r.filesChanged.length === 0) return false
       if (filter === 'rootcause' && !r.rootCause) return false
+      if (filter === 'guard' && r.Status !== 'blocked' && (!r.policyViolations || r.policyViolations.length === 0)) return false
 
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase()
@@ -190,7 +200,8 @@ export function History({ token, nodes = [], onRerun }: {
         const matchHash = r.runHash.toLowerCase().includes(q)
         const matchFile = r.filesChanged.some((f: string) => f.toLowerCase().includes(q))
         const matchErr = r.rootCause ? `${r.rootCause.type} ${r.rootCause.message}`.toLowerCase().includes(q) : false
-        if (!matchCmd && !matchSession && !matchHash && !matchFile && !matchErr) {
+        const matchGuard = r.policyViolations?.some((v: any) => `${v.rule_id} ${v.message} ${v.risk}`.toLowerCase().includes(q))
+        if (!matchCmd && !matchSession && !matchHash && !matchFile && !matchErr && !matchGuard) {
           return false
         }
       }
@@ -389,6 +400,13 @@ export function History({ token, nodes = [], onRerun }: {
             >
               <FileTextIcon size={11} /> Diffs <span className="pill-count mono">{stats.diffsCount}</span>
             </button>
+            <button
+              type="button"
+              className={`filter-pill ${filter === 'guard' ? 'active' : ''}`}
+              onClick={() => setFilter('guard')}
+            >
+              <ShieldCheckIcon size={11} /> Guardrails <span className="pill-count mono">{stats.guardCount}</span>
+            </button>
             {stats.rootCauseCount > 0 && (
               <button
                 type="button"
@@ -459,9 +477,19 @@ export function History({ token, nodes = [], onRerun }: {
                       </td>
 
                       <td className="cell-status">
-                        <span className={`status-tag ${isSuccess ? 'tag-success' : 'tag-error'}`}>
-                          {isSuccess ? 'exit 0' : `exit ${r.ExitCode}`}
-                        </span>
+                        {r.Status === 'blocked' ? (
+                          <span className="status-tag tag-blocked" title={`Blocked by Policy: ${r.riskLevel || 'critical'} risk`}>
+                            <ShieldAlertIcon size={11} /> blocked
+                          </span>
+                        ) : r.policyViolations && r.policyViolations.length > 0 ? (
+                          <span className="status-tag tag-warn" title="Policy Warning Triggered">
+                            <AlertTriangleIcon size={11} /> warn
+                          </span>
+                        ) : (
+                          <span className={`status-tag ${isSuccess ? 'tag-success' : 'tag-error'}`}>
+                            {isSuccess ? 'exit 0' : `exit ${r.ExitCode}`}
+                          </span>
+                        )}
                       </td>
 
                       <td className="cell-command">
@@ -553,6 +581,36 @@ export function History({ token, nodes = [], onRerun }: {
                       <tr className="ledger-expanded-row">
                         <td colSpan={8} className="expanded-td" onClick={(e) => e.stopPropagation()}>
                           <div className="ledger-expanded-inspector">
+                            {/* Security Guardrail Violation / Policy Alert */}
+                            {r.policyViolations && r.policyViolations.length > 0 && (
+                              <div className={`inspector-alert guard-alert ${r.Status === 'blocked' ? 'blocked' : 'warn'}`}>
+                                <div className="alert-head">
+                                  <ShieldAlertIcon size={14} className="guard-shield-icon" />
+                                  <span className="alert-type mono">
+                                    SECURITY POLICY {r.Status === 'blocked' ? 'ENFORCEMENT (EXECUTION BLOCKED)' : 'WARNING'}
+                                  </span>
+                                  {r.riskLevel && (
+                                    <span className={`guard-risk-pill risk-${r.riskLevel.toLowerCase()}`}>
+                                      {r.riskLevel.toUpperCase()} RISK
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="guard-violations-list">
+                                  {r.policyViolations.map((v: any, vi: number) => (
+                                    <div key={vi} className="guard-violation-item">
+                                      <div className="guard-rule-title">
+                                        <span className="rule-badge mono">{v.rule_id}</span>
+                                        <span className={`rule-action-badge ${v.action === 'block' ? 'action-block' : 'action-warn'}`}>
+                                          {v.action?.toUpperCase()}
+                                        </span>
+                                      </div>
+                                      <div className="alert-msg">{v.message}</div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
                             {/* Error Root Cause Alert if any */}
                             {r.rootCause && (
                               <div className="inspector-alert error">

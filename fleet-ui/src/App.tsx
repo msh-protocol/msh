@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { History } from './components/History'
 import { Metrics } from './components/Metrics'
+import { Guardrails } from './components/Guardrails'
 import { NodeDrawer, type NodeDetail } from './components/NodeDrawer'
 import { ShortcutsModal } from './components/ShortcutsModal'
 import {
@@ -15,7 +16,8 @@ import {
   ArrowDownIcon,
   ServerIcon,
   ClockIcon,
-  TrendingUpIcon
+  TrendingUpIcon,
+  ShieldCheckIcon
 } from './components/Icons'
 import { MshLogo } from './components/MshLogo'
 
@@ -29,7 +31,7 @@ function App() {
   const [closed, setClosed] = useState<Record<string, boolean>>({})
   const wsRefs = useRef<Record<string, WebSocket>>({})
   const tileRefs = useRef<Record<string, HTMLDivElement | null>>({})
-  const [currentTab, setCurrentTab] = useState<'fleet' | 'history' | 'metrics'>('fleet')
+  const [currentTab, setCurrentTab] = useState<'fleet' | 'history' | 'metrics' | 'guardrails'>('fleet')
   const [cmdInputs, setCmdInputs] = useState<Record<string, string>>({})
   const [runningCmds, setRunningCmds] = useState<Record<string, boolean>>({})
   const [copiedId, setCopiedId] = useState<string | null>(null)
@@ -1175,7 +1177,7 @@ function App() {
                 <MshLogo size={28} />
               </div>
               <span className="brand-title">msh fleet</span>
-              <span className="brand-pill">~ swarm 1.4 ~</span>
+              <span className="brand-pill">~ swarm 1.5 ~</span>
             </div>
 
             <div className="navbar-center">
@@ -1200,6 +1202,13 @@ function App() {
                 >
                   <TrendingUpIcon size={13} />
                   <span>Metrics</span>
+                </button>
+                <button
+                  className={`nav-pill ${currentTab === 'guardrails' ? 'active' : ''}`}
+                  onClick={() => setCurrentTab('guardrails')}
+                >
+                  <ShieldCheckIcon size={13} />
+                  <span>Guardrails</span>
                 </button>
               </div>
             </div>
@@ -1230,6 +1239,7 @@ function App() {
             {currentTab === 'fleet' && renderLiveFleet()}
             {currentTab === 'history' && <History token={token} nodes={nodes} onRerun={handleRerunCommand} />}
             {currentTab === 'metrics' && <Metrics token={token} />}
+            {currentTab === 'guardrails' && <Guardrails token={token} />}
           </main>
 
           <NodeDrawer

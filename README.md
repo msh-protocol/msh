@@ -46,7 +46,7 @@ When an autonomous AI agent executes terminal commands directly in a raw shell, 
 | **Hallucinated File Edits** | ❌ Unrecoverable workspace pollution | ✅ Atomic rollback via `msh undo` (git diff inverse) |
 | **Compiler / Syntax Errors** | ❌ Unstructured stack traces | ✅ Structured `error_root_cause` extraction |
 | **ANSI Escape Codes** | ❌ Corrupts model embeddings | ✅ Stripped to clean plain text |
-| **Process Exit Codes** | ⚠️ Shell-dependent | ✅ Strict fidelity across POSIX & Windows |
+| **Destructive / Malicious Commands** | ❌ Can wipe root (`rm -rf /`) or OS drives | ✅ Pre-execution guardrails intercept & block immediately |
 | **Agent Tool Calling** | ❌ Unstructured text | ✅ Strongly-typed `ExecResponse` JSON |
 
 ---
@@ -113,7 +113,33 @@ msh undo 42 --file src/index.ts
 
 ---
 
-### 3. Model Context Protocol (MCP) Server
+### 3. Pre-Execution Safety Guardrails (`msh guard`)
+
+A three-tier defense system that intercepts destructive agent instructions **before** any OS process spawns:
+
+- **Tier 1 (Always Active)**: Blocks catastrophic root deletions (`rm -rf /`, `rm -rf ~`), Windows root wipes (`rmdir /s /q C:\`), fork bombs (`:(){ :|:& };:`), raw disk zeroing (`dd of=/dev/sd*`), disk formatting (`mkfs.*`), and recursive root permission wipes (`chmod -R 777 /`).
+- **Tier 2 (Project Policies)**: Configure custom team rules and risk levels in `.msh/policies.yaml`.
+- **Tier 3 (Confinement)**: Pass `--strict-workspace` to sandbox file writes strictly within project boundaries, preventing directory traversal escapes (`../../`).
+
+```bash
+# Evaluate any command against active policies without executing
+msh guard check "rm -rf /"
+
+# View all active rules and risk levels
+msh guard list
+
+# Initialize a starter .msh/policies.yaml file
+msh guard init
+
+# Enforce strict zero-trust workspace boundary on execution
+msh --strict-workspace "cat ../../etc/passwd"
+```
+
+For full policy syntax and configuration examples, see [docs/policies.md](docs/policies.md).
+
+---
+
+### 4. Model Context Protocol (MCP) Server
 
 `msh` natively exposes a Model Context Protocol server over standard I/O for Claude Desktop, Cursor, Claude Code, and Windsurf:
 

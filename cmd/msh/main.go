@@ -27,8 +27,10 @@ var (
 	flagNoFiles  bool
 	flagPty      bool
 	flagEnvFile  string
-	flagNoRedact bool
-	flagAnswers  []string
+	flagNoRedact        bool
+	flagAnswers         []string
+	flagStrictWorkspace bool
+	flagNoGuard         bool
 )
 
 var rootCmd = &cobra.Command{
@@ -85,6 +87,8 @@ and returned as a structured JSON payload.`,
 	execCmd.Flags().StringVar(&flagEnvFile, "env-file", "", "Path to a .env file to load before execution")
 	execCmd.Flags().BoolVar(&flagNoRedact, "no-redact", false, "Disable secret redaction of command output")
 	execCmd.Flags().StringSliceVar(&flagAnswers, "answer", nil, "Answer to feed an interactive prompt (repeatable, used in order when prompts are detected)")
+	execCmd.Flags().BoolVar(&flagStrictWorkspace, "strict-workspace", false, "Enforce strict confinement of file writes within workspace")
+	execCmd.Flags().BoolVar(&flagNoGuard, "no-guard", false, "Bypass all safety guardrails and policy enforcement")
 
 	// --- version command ---
 	versionCmd := &cobra.Command{
@@ -131,8 +135,10 @@ func runExec(cmd *cobra.Command, args []string) error {
 		DetectFiles:    !flagNoFiles,
 		UsePty:         flagPty,
 		EnvFile:        flagEnvFile,
-		RedactSecrets:  redactFlag(),
-		PromptAnswers:  flagAnswers,
+		RedactSecrets:   redactFlag(),
+		PromptAnswers:   flagAnswers,
+		StrictWorkspace: flagStrictWorkspace,
+		NoGuard:         flagNoGuard,
 	}
 
 	// Execute

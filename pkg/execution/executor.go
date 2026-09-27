@@ -19,6 +19,7 @@ import (
 	"github.com/joho/godotenv"
 
 	"github.com/msh-protocol/msh/pkg/fs"
+	"github.com/msh-protocol/msh/pkg/guard"
 	"github.com/msh-protocol/msh/pkg/hooks"
 	"github.com/msh-protocol/msh/pkg/prompts"
 	"github.com/msh-protocol/msh/pkg/protocol"
@@ -179,6 +180,35 @@ func (e *Executor) prepare(req protocol.ExecRequest, startTime time.Time) *prep 
 	p.resp = protocol.ExecResponse{
 		SessionID: e.session.ID,
 		Cwd:       p.cwd,
+	}
+
+	// 0. Pre-Execution Semantic Guardrails & Policy Enforcement (msh guard)
+	guardCfg, _ := guard.LoadConfig(p.cwd)
+	guardVerdict := guard.Evaluate(p.req.Command, p.cwd, guardCfg, p.req.StrictWorkspace, p.req.NoGuard)
+	p.resp.RiskLevel = string(guardVerdict.Risk)
+	if len(guardVerdict.Violations) > 0 {
+		for _, v := range guardVerdict.Violations {
+			p.resp.PolicyViolations = append(p.resp.PolicyViolations, protocol.PolicyViolation{
+				RuleID:  v.RuleID,
+				Risk:    string(v.Risk),
+				Action:  string(v.Action),
+				Message: v.Message,
+			})
+		}
+	}
+	if !guardVerdict.Allowed {
+		p.early = protocol.ExecResponse{
+			SessionID:        e.session.ID,
+			Cwd:              p.cwd,
+			Status:           protocol.StatusBlocked,
+			ExitCode:         -1,
+			RiskLevel:        string(guardVerdict.Risk),
+			PolicyViolations: p.resp.PolicyViolations,
+			Error:            guardVerdict.Reason,
+			DurationMs:       time.Since(startTime).Milliseconds(),
+		}
+		p.earlyOK = true
+		return p
 	}
 
 	// 1. Load and Run Pre-Hooks

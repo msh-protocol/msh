@@ -21,9 +21,11 @@ type PassthroughFlags struct {
 	MaxLines int
 	Pty      bool
 	NoFiles  bool
-	EnvFile  string
-	NoRedact bool
-	Answers  []string
+	EnvFile         string
+	NoRedact        bool
+	Answers         []string
+	StrictWorkspace bool
+	NoGuard         bool
 }
 
 // DefaultPassthroughFlags returns standard production defaults for passthrough runs.
@@ -45,6 +47,7 @@ var internalSubcommands = map[string]bool{
 	"plugin":     true,
 	"undo":       true,
 	"verify":     true,
+	"guard":      true,
 	"version":    true,
 	"help":       true,
 	"completion": true,
@@ -130,6 +133,12 @@ func ParsePassthroughArgs(args []string) (flags PassthroughFlags, cmdStr string,
 			i += 2
 		} else if strings.HasPrefix(arg, "--answer=") {
 			flags.Answers = append(flags.Answers, strings.TrimPrefix(arg, "--answer="))
+			i++
+		} else if arg == "--strict-workspace" {
+			flags.StrictWorkspace = true
+			i++
+		} else if arg == "--no-guard" {
+			flags.NoGuard = true
 			i++
 		} else {
 			// Unrecognized leading flag: let Cobra handle it (or return error)
@@ -262,6 +271,8 @@ func RunPassthrough(flags PassthroughFlags, command string) {
 		EnvFile:        flags.EnvFile,
 		RedactSecrets:  redactSecrets,
 		PromptAnswers:  flags.Answers,
+		StrictWorkspace: flags.StrictWorkspace,
+		NoGuard:         flags.NoGuard,
 	}
 
 	executor := execution.NewExecutor(session)
@@ -278,9 +289,23 @@ func RunPassthrough(flags PassthroughFlags, command string) {
 		fmt.Fprintln(os.Stderr, resp.Stderr)
 	}
 
+	// Policy warnings (when execution was allowed to proceed despite warnings)
+	if len(resp.PolicyViolations) > 0 && resp.Status != protocol.StatusBlocked {
+		for _, v := range resp.PolicyViolations {
+			fmt.Fprintf(os.Stderr, "[msh:guard] policy warning [%s]: %s\n", strings.ToUpper(v.Risk), v.Message)
+		}
+	}
+
 	switch resp.Status {
 	case protocol.StatusBlocked:
-		fmt.Fprintf(os.Stderr, "\n[msh] process blocked waiting for interactive prompt: %s\n", resp.PromptDetected)
+		if len(resp.PolicyViolations) > 0 {
+			fmt.Fprintf(os.Stderr, "\n[msh:guard] execution BLOCKED by security policy [%s risk]: %s\n", strings.ToUpper(resp.RiskLevel), resp.PolicyViolations[0].Message)
+			for i, v := range resp.PolicyViolations {
+				fmt.Fprintf(os.Stderr, "  %d. [%s] %s: %s\n", i+1, strings.ToUpper(v.Risk), v.RuleID, v.Message)
+			}
+		} else {
+			fmt.Fprintf(os.Stderr, "\n[msh] process blocked waiting for interactive prompt: %s\n", resp.PromptDetected)
+		}
 	case protocol.StatusTimeout:
 		fmt.Fprintf(os.Stderr, "\n[msh] process killed due to timeout (%s)\n", flags.Timeout)
 	}
