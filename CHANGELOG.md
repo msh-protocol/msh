@@ -8,6 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-09-28
+
+### Added
+- **Speculative Execution & Shadow Git Worktrees (`msh branch`)** — Implemented sub-second transactional state isolation for autonomous agents (arXiv:2512.12806, arXiv:2605.22781). Provisions isolated shadow git worktrees in `.msh/branches/<name>` allowing agents to trial speculative refactors and parallel hypotheses without polluting the developer's primary working tree.
+- **New CLI Subcommands (`msh branch`)**:
+  - `msh branch create <name>` — Instantly spins up an isolated shadow worktree anchored to any commit or ref.
+  - `msh branch list` — Lists active shadow branches, commit divergences, modified file counts, and run statistics.
+  - `msh branch run <name> "<cmd>"` — Executes commands strictly inside the designated shadow worktree without touching main.
+  - `msh branch diff <name>` — Displays unified git diff of all modifications made within the shadow worktree.
+  - `msh branch merge <name>` — Atomically merges verified solutions into the primary working tree and prunes the shadow worktree.
+  - `msh branch abort <name>` — Cleans up worktrees cleanly and emits a structured `SemanticPrunePayload` with `context_prune_turns` (arXiv:2608.03836) instructing LLM harnesses how many turns to rewind.
+- **Fleet UI Branches / Speculation Control Plane** — Added a dedicated `Branches` navigation tab to `msh fleet` featuring real-time shadow worktree status, an in-browser command execution runner, side-by-side diff inspectors, and one-touch merge/abort controls matching the vintage Bookbinder Editorial theme.
+- **REST Endpoints for Agent Swarms** — Added `/api/branches`, `/api/branch/create`, `/api/branch/run`, `/api/branch/diff`, `/api/branch/merge`, and `/api/branch/abort` to the fleet server.
+
 ### Changed
 - **Guardrails Theme Harmonization & Vector Icons Upgrade** — Rethemed all Guardrails dashboard components to strictly adhere to the Vintage Literary Print / Bookbinder Editorial design system (Aged Book Paper `#fdfcf9` / `#eee8dc`, Warm Book Margin Rules `#ded7c7`, and Walnut / Lampblack Inks `#5c3a2e` / `#231f1d`), eliminating pitch-black containers and unreadable dark table headers. Replaced all raw OS emojis across navbar tabs, buttons, simulator banners, and the execution history ledger with calibrated SVG vector icons (`ShieldCheckIcon`, `ShieldAlertIcon`, `ZapIcon`, `AlertTriangleIcon`, `CheckIcon`, `SearchIcon`).
 - **Development Guidelines Enforced in `.agents`** — Codified strict UI design rules in [`.agents/AGENTS.md`](file:///c:/Users/tesse/Desktop/msh-protocol/.agents/AGENTS.md) requiring all future UI additions to maintain the Bookbinder Editorial theme and forbidding raw OS emojis in favor of SVG stroke components.

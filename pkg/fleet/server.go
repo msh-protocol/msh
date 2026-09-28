@@ -18,6 +18,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	fleetui "github.com/msh-protocol/msh/fleet-ui"
+	"github.com/msh-protocol/msh/pkg/branch"
 	"github.com/msh-protocol/msh/pkg/db"
 	"github.com/msh-protocol/msh/pkg/execution"
 	mshfs "github.com/msh-protocol/msh/pkg/fs"
@@ -88,6 +89,12 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/verify", s.handleVerify)
 	mux.HandleFunc("/api/policies", s.handlePolicies)
 	mux.HandleFunc("/api/guard/check", s.handleGuardCheck)
+	mux.HandleFunc("/api/branches", s.handleListBranches)
+	mux.HandleFunc("/api/branch/create", s.handleCreateBranch)
+	mux.HandleFunc("/api/branch/run", s.handleRunBranch)
+	mux.HandleFunc("/api/branch/diff", s.handleDiffBranch)
+	mux.HandleFunc("/api/branch/merge", s.handleMergeBranch)
+	mux.HandleFunc("/api/branch/abort", s.handleAbortBranch)
 	mux.HandleFunc("/stream/daemon", s.handleStreamDaemon)
 	mux.HandleFunc("/stream/exec", s.handleStreamExec)
 
@@ -1056,3 +1063,245 @@ func (s *Server) handleGuardCheck(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(res)
 }
+
+func (s *Server) handleListBranches(w http.ResponseWriter, r *http.Request) {
+	if s.token != "" && !protocol.SecureCompare(r.Header.Get("Authorization"), "Bearer "+s.token) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	cwd, _ := os.Getwd()
+	mgr, err := branch.NewManager(cwd)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode([]*branch.BranchInfo{})
+		return
+	}
+
+	list, err := mgr.List()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(list)
+}
+
+func (s *Server) handleCreateBranch(w http.ResponseWriter, r *http.Request) {
+	if s.token != "" && !protocol.SecureCompare(r.Header.Get("Authorization"), "Bearer "+s.token) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var payload struct {
+		Name string `json:"name"`
+		From string `json:"from"`
+		Desc string `json:"desc"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "Invalid body", http.StatusBadRequest)
+		return
+	}
+
+	cwd, _ := os.Getwd()
+	mgr, err := branch.NewManager(cwd)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	info, err := mgr.Create(payload.Name, payload.From, payload.Desc)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(info)
+}
+
+func (s *Server) handleRunBranch(w http.ResponseWriter, r *http.Request) {
+	if s.token != "" && !protocol.SecureCompare(r.Header.Get("Authorization"), "Bearer "+s.token) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var payload struct {
+		Name     string `json:"name"`
+		Command  string `json:"command"`
+		Timeout  string `json:"timeout"`
+		MaxLines int    `json:"max_lines"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "Invalid body", http.StatusBadRequest)
+		return
+	}
+
+	cwd, _ := os.Getwd()
+	mgr, err := branch.NewManager(cwd)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	timeout := 2 * time.Minute
+	if payload.Timeout != "" {
+		if t, err := time.ParseDuration(payload.Timeout); err == nil {
+			timeout = t
+		}
+	}
+
+	resp, err := mgr.Run(payload.Name, payload.Command, timeout, payload.MaxLines)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+func (s *Server) handleDiffBranch(w http.ResponseWriter, r *http.Request) {
+	if s.token != "" && !protocol.SecureCompare(r.Header.Get("Authorization"), "Bearer "+s.token) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	name := r.URL.Query().Get("name")
+	if name == "" {
+		http.Error(w, "name parameter required", http.StatusBadRequest)
+		return
+	}
+
+	cwd, _ := os.Getwd()
+	mgr, err := branch.NewManager(cwd)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	diff, err := mgr.Diff(name)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"diff": diff})
+}
+
+func (s *Server) handleMergeBranch(w http.ResponseWriter, r *http.Request) {
+	if s.token != "" && !protocol.SecureCompare(r.Header.Get("Authorization"), "Bearer "+s.token) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var payload struct {
+		Name    string `json:"name"`
+		Message string `json:"message"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "Invalid body", http.StatusBadRequest)
+		return
+	}
+
+	cwd, _ := os.Getwd()
+	mgr, err := branch.NewManager(cwd)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if err := mgr.Merge(payload.Name, payload.Message); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"status": "merged", "branch": payload.Name})
+}
+
+func (s *Server) handleAbortBranch(w http.ResponseWriter, r *http.Request) {
+	if s.token != "" && !protocol.SecureCompare(r.Header.Get("Authorization"), "Bearer "+s.token) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var payload struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "Invalid body", http.StatusBadRequest)
+		return
+	}
+
+	cwd, _ := os.Getwd()
+	mgr, err := branch.NewManager(cwd)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	prune, err := mgr.Abort(payload.Name)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(prune)
+}
+

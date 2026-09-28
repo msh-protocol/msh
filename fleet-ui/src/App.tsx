@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { History } from './components/History'
 import { Metrics } from './components/Metrics'
 import { Guardrails } from './components/Guardrails'
+import { Branches } from './components/Branches'
 import { NodeDrawer, type NodeDetail } from './components/NodeDrawer'
 import { ShortcutsModal } from './components/ShortcutsModal'
 import {
@@ -17,7 +18,8 @@ import {
   ServerIcon,
   ClockIcon,
   TrendingUpIcon,
-  ShieldCheckIcon
+  ShieldCheckIcon,
+  GitBranchIcon
 } from './components/Icons'
 import { MshLogo } from './components/MshLogo'
 
@@ -31,7 +33,7 @@ function App() {
   const [closed, setClosed] = useState<Record<string, boolean>>({})
   const wsRefs = useRef<Record<string, WebSocket>>({})
   const tileRefs = useRef<Record<string, HTMLDivElement | null>>({})
-  const [currentTab, setCurrentTab] = useState<'fleet' | 'history' | 'metrics' | 'guardrails'>('fleet')
+  const [currentTab, setCurrentTab] = useState<'fleet' | 'history' | 'metrics' | 'guardrails' | 'branches'>('fleet')
   const [cmdInputs, setCmdInputs] = useState<Record<string, string>>({})
   const [runningCmds, setRunningCmds] = useState<Record<string, boolean>>({})
   const [copiedId, setCopiedId] = useState<string | null>(null)
@@ -1210,6 +1212,13 @@ function App() {
                   <ShieldCheckIcon size={13} />
                   <span>Guardrails</span>
                 </button>
+                <button
+                  className={`nav-pill ${currentTab === 'branches' ? 'active' : ''}`}
+                  onClick={() => setCurrentTab('branches')}
+                >
+                  <GitBranchIcon size={13} />
+                  <span>Branches</span>
+                </button>
               </div>
             </div>
 
@@ -1240,6 +1249,7 @@ function App() {
             {currentTab === 'history' && <History token={token} nodes={nodes} onRerun={handleRerunCommand} />}
             {currentTab === 'metrics' && <Metrics token={token} />}
             {currentTab === 'guardrails' && <Guardrails token={token} />}
+            {currentTab === 'branches' && <Branches token={token} />}
           </main>
 
           <NodeDrawer
