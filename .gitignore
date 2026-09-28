@@ -45,5 +45,7 @@ me.md
 
 test_pty.py
 
-# Runtime logs
+# Runtime logs & shadow worktrees
 *.log
+.msh/branches/
+.msh/worktrees/

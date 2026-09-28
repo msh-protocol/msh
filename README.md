@@ -139,7 +139,32 @@ For full policy syntax and configuration examples, see [docs/policies.md](docs/p
 
 ---
 
-### 4. Model Context Protocol (MCP) Server
+### 4. Speculative Execution & Shadow Worktrees (`msh branch`)
+
+Provisions sub-second transactional git worktrees (`.msh/branches/<name>`) for multi-hypothesis exploration without polluting the developer's primary working tree (arXiv:2512.12806, arXiv:2605.22781):
+
+```bash
+# 1. Spin up an isolated shadow worktree in milliseconds
+msh branch create hypo-cache --desc "Trial caching layer"
+
+# 2. Run commands strictly inside the shadow worktree
+msh branch run hypo-cache "npm test"
+
+# 3. Inspect speculative code modifications
+msh branch diff hypo-cache
+
+# 4. Atomically merge verified solutions
+msh branch merge hypo-cache -m "perf: integrate verified caching layer"
+
+# 5. Or abort failed hypotheses cleanly with context rewind guidance (arXiv:2608.03836)
+msh branch abort hypo-cache
+```
+
+For complete details on shadow worktree isolation and LLM context pruning, see [docs/branch.md](docs/branch.md).
+
+---
+
+### 5. Model Context Protocol (MCP) Server
 
 `msh` natively exposes a Model Context Protocol server over standard I/O for Claude Desktop, Cursor, Claude Code, and Windsurf:
 
