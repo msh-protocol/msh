@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-09-28
+
 ### Added
 - **Speculative Execution & Shadow Git Worktrees (`msh branch`)** — Implemented sub-second transactional state isolation for autonomous agents (arXiv:2512.12806, arXiv:2605.22781). Provisions isolated shadow git worktrees in `.msh/branches/<name>` allowing agents to trial speculative refactors and parallel hypotheses without polluting the developer's primary working tree.
 - **New CLI Subcommands (`msh branch`)**:

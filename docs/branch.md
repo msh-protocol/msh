@@ -1,5 +1,6 @@
 # Speculative Execution & Shadow Worktrees (`msh branch`)
 
+> **Introduced in msh v1.6.0** (Phase 9)  
 > **Academic Foundation**: Transactional state isolation for multi-step AI agent tool use (arXiv:2512.12806, arXiv:2605.22781) and Semantic Context Synchronization (arXiv:2608.03836).
 
 When autonomous AI coding agents explore alternative refactoring strategies, architectural redesigns, or run dangerous test suites, running commands directly in the primary workspace risks corrupting git state and polluting the developer's working directory.
