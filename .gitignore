@@ -49,3 +49,4 @@ test_pty.py
 *.log
 .msh/branches/
 .msh/worktrees/
+.msh-meta.json
