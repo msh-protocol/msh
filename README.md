@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://github.com/msh-protocol/msh/actions/workflows/ci.yml"><img src="https://github.com/msh-protocol/msh/actions/workflows/ci.yml/badge.svg" alt="CI Status" /></a>
-  <a href="https://github.com/msh-protocol/msh/releases"><img src="https://img.shields.io/badge/version-v1.4.0-5c3a2e.svg" alt="Version" /></a>
+  <a href="https://github.com/msh-protocol/msh/releases"><img src="https://img.shields.io/badge/version-v1.6.0-5c3a2e.svg" alt="Version" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License" /></a>
   <a href="https://pypi.org/project/msh-protocol/"><img src="https://img.shields.io/badge/pypi-msh--protocol-blue.svg" alt="PyPI" /></a>
   <a href="https://www.npmjs.com/package/@msh-protocol/client"><img src="https://img.shields.io/badge/npm-@msh--protocol/client-red.svg" alt="npm" /></a>
@@ -346,7 +346,7 @@ msh go test -v ./evals/...
 
 ## Status
 
-**`v1.4.0` — Production Ready.** Active use across agentic workflows, SRE toolchains, and autonomous harnesses.
+**`v1.6.0` — Production Ready.** Active use across agentic workflows, SRE toolchains, and autonomous harnesses.
 
 ---
 

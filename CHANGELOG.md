@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Version Alignment & UI Badges** — Synchronized repository version badges in `README.md` to `v1.6.0`, updated the fleet brand header pill to `~ swarm 1.6 ~`, and corrected the speculative execution isolation badge in Fleet UI to `v1.6.0 Runtime Isolation`.
+
 ## [1.6.0] - 2026-09-28
 
 ### Added
