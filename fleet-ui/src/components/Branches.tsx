@@ -50,6 +50,14 @@ export function Branches({ token }: { token: string }) {
   // Prune / Abort Feedback Banner
   const [pruneAlert, setPruneAlert] = useState<{ branch: string; turns: number; filesCount: number } | null>(null)
 
+  // In-App Confirmation Modal State (replaces window.confirm & alert)
+  const [confirmModal, setConfirmModal] = useState<{
+    type: 'merge' | 'abort'
+    branch: string
+    loading?: boolean
+    error?: string | null
+  } | null>(null)
+
   const fetchBranches = async () => {
     try {
       setLoading(true)
@@ -100,10 +108,10 @@ export function Branches({ token }: { token: string }) {
         await fetchBranches()
       } else {
         const errText = await res.text()
-        alert(`Failed to create shadow branch: ${errText}`)
+        setError(`Failed to create shadow branch: ${errText}`)
       }
     } catch (err: any) {
-      alert(`Error: ${err.message}`)
+      setError(`Error: ${err.message}`)
     } finally {
       setCreatingSubmitting(false)
     }
@@ -111,7 +119,17 @@ export function Branches({ token }: { token: string }) {
 
   const handleRunCommand = async (branchName: string) => {
     const cmd = cmdInputs[branchName]
-    if (!cmd || !cmd.trim()) return
+    if (!cmd || !cmd.trim()) {
+      setExecOutputs(prev => ({
+        ...prev,
+        [branchName]: {
+          stdout: '',
+          stderr: 'Please type a command into the input field above (e.g. npm test, go test ./...)',
+          exitCode: 1
+        }
+      }))
+      return
+    }
 
     setExecutingBranch(branchName)
     try {
@@ -185,66 +203,66 @@ export function Branches({ token }: { token: string }) {
     }
   }
 
-  const handleMergeBranch = async (branchName: string) => {
-    const confirmed = window.confirm(
-      `Merge speculative branch '${branchName}' into main?\n\nThis will apply all verified changes to your primary working tree and prune the shadow worktree.`
-    )
-    if (!confirmed) return
-
-    try {
-      const res = await fetch('/api/branch/merge', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {})
-        },
-        body: JSON.stringify({
-          name: branchName,
-          message: `msh: verified solution from shadow branch '${branchName}'`
-        })
-      })
-
-      if (res.ok) {
-        await fetchBranches()
-      } else {
-        const err = await res.text()
-        alert(`Failed to merge branch: ${err}`)
-      }
-    } catch (e: any) {
-      alert(`Error: ${e.message}`)
-    }
+  const handleMergeBranch = (branchName: string) => {
+    setConfirmModal({ type: 'merge', branch: branchName, loading: false, error: null })
   }
 
-  const handleAbortBranch = async (branchName: string) => {
-    const confirmed = window.confirm(
-      `Abort speculative hypothesis '${branchName}'?\n\nThis will cleanly discard all changes and prune the shadow worktree without touching your main workspace.`
-    )
-    if (!confirmed) return
+  const handleAbortBranch = (branchName: string) => {
+    setConfirmModal({ type: 'abort', branch: branchName, loading: false, error: null })
+  }
+
+  const executeConfirmAction = async () => {
+    if (!confirmModal) return
+    const { type, branch } = confirmModal
+    setConfirmModal(prev => prev ? { ...prev, loading: true, error: null } : null)
 
     try {
-      const res = await fetch('/api/branch/abort', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {})
-        },
-        body: JSON.stringify({ name: branchName })
-      })
-
-      if (res.ok) {
-        const pruneData = await res.json()
-        setPruneAlert({
-          branch: branchName,
-          turns: pruneData.context_prune_turns || 1,
-          filesCount: pruneData.files_cleaned?.length || 0
+      if (type === 'merge') {
+        const res = await fetch('/api/branch/merge', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {})
+          },
+          body: JSON.stringify({
+            name: branch,
+            message: `msh: verified solution from shadow branch '${branch}'`
+          })
         })
-        await fetchBranches()
+
+        if (res.ok) {
+          setConfirmModal(null)
+          await fetchBranches()
+        } else {
+          const err = await res.text()
+          setConfirmModal(prev => prev ? { ...prev, loading: false, error: `Failed to merge: ${err}` } : null)
+        }
       } else {
-        const err = await res.text()
-        alert(`Failed to abort branch: ${err}`)
+        const res = await fetch('/api/branch/abort', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {})
+          },
+          body: JSON.stringify({ name: branch })
+        })
+
+        if (res.ok) {
+          const pruneData = await res.json()
+          setPruneAlert({
+            branch: branch,
+            turns: pruneData.context_prune_turns || 1,
+            filesCount: pruneData.files_cleaned?.length || 0
+          })
+          setConfirmModal(null)
+          await fetchBranches()
+        } else {
+          const err = await res.text()
+          setConfirmModal(prev => prev ? { ...prev, loading: false, error: `Failed to abort: ${err}` } : null)
+        }
       }
     } catch (e: any) {
-      alert(`Error: ${e.message}`)
+      setConfirmModal(prev => prev ? { ...prev, loading: false, error: `Network error: ${e.message}` } : null)
     }
   }
 
@@ -407,6 +425,83 @@ export function Branches({ token }: { token: string }) {
         </div>
       )}
 
+      {/* In-App Confirmation Modal (Merge / Abort) */}
+      {confirmModal && (
+        <div className="branch-modal-overlay">
+          <div className="branch-modal-card" style={{ maxWidth: '440px' }}>
+            <div className="modal-header">
+              <div className="modal-title-group">
+                {confirmModal.type === 'merge' ? (
+                  <CheckIcon size={18} className="modal-title-icon" style={{ color: 'var(--success, #385a49)' }} />
+                ) : (
+                  <TrashIcon size={18} className="modal-title-icon" style={{ color: 'var(--danger, #8a3328)' }} />
+                )}
+                <h3>
+                  {confirmModal.type === 'merge' ? 'Merge Speculative Solution' : 'Discard Speculative Hypothesis'}
+                </h3>
+              </div>
+              <button
+                type="button"
+                className="btn-close-modal"
+                disabled={confirmModal.loading}
+                onClick={() => !confirmModal.loading && setConfirmModal(null)}
+              >
+                <XIcon size={15} />
+              </button>
+            </div>
+
+            <div style={{ padding: '20px' }}>
+              <p style={{ margin: '0 0 16px', fontSize: '13px', lineHeight: '1.5', color: 'var(--text-secondary, #574f47)' }}>
+                {confirmModal.type === 'merge' ? (
+                  <>
+                    Merge verified changes from shadow branch <strong className="mono">{confirmModal.branch}</strong> into your workspace? This will apply all diffs to your primary working tree and prune the shadow worktree.
+                  </>
+                ) : (
+                  <>
+                    Discard speculative hypothesis <strong className="mono">{confirmModal.branch}</strong>? This will cleanly remove the shadow worktree and discard all mutations without touching your main workspace.
+                  </>
+                )}
+              </p>
+
+              {confirmModal.error && (
+                <div className="branches-error-state" style={{ marginBottom: '16px', padding: '10px 14px' }}>
+                  <AlertTriangleIcon size={15} />
+                  <span style={{ fontSize: '12px' }}>{confirmModal.error}</span>
+                </div>
+              )}
+
+              <div className="modal-actions">
+                <button
+                  type="button"
+                  className="btn-cancel"
+                  disabled={confirmModal.loading}
+                  onClick={() => setConfirmModal(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn-submit"
+                  style={confirmModal.type === 'abort' ? {
+                    background: 'var(--danger, #8a3328)',
+                    borderColor: 'var(--danger, #8a3328)'
+                  } : {
+                    background: 'var(--success, #385a49)',
+                    borderColor: 'var(--success, #385a49)'
+                  }}
+                  disabled={confirmModal.loading}
+                  onClick={executeConfirmAction}
+                >
+                  {confirmModal.loading
+                    ? (confirmModal.type === 'merge' ? 'Merging Solution...' : 'Aborting...')
+                    : (confirmModal.type === 'merge' ? '✓ Confirm & Merge' : 'Discard & Abort')}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Branches List */}
       {loading ? (
         <div className="branches-empty-state">
@@ -526,7 +621,8 @@ export function Branches({ token }: { token: string }) {
                       type="button"
                       className="btn-exec-run"
                       onClick={() => handleRunCommand(b.name)}
-                      disabled={isRunning || !cmdInputs[b.name]?.trim()}
+                      disabled={isRunning}
+                      title={!cmdInputs[b.name]?.trim() ? "Type a command to run inside this shadow worktree" : "Run command"}
                     >
                       <PlayIcon size={12} />
                       <span>{isRunning ? 'Running...' : 'Execute'}</span>
