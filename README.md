@@ -15,7 +15,6 @@
   <a href="https://pypi.org/project/msh-protocol/"><img src="https://img.shields.io/badge/pypi-msh--protocol-blue.svg" alt="PyPI" /></a>
   <a href="https://www.npmjs.com/package/@msh-protocol/client"><img src="https://img.shields.io/badge/npm-@msh--protocol/client-red.svg" alt="npm" /></a>
   
-  <a/>[![GitStress Concurrency](https://gitstress.com/api/badge/msh-protocol/msh)](https://gitstress.com/msh-protocol/msh)</a>
 </p>
 
 <p align="center">
