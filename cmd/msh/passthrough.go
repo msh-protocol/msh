@@ -49,6 +49,7 @@ var internalSubcommands = map[string]bool{
 	"verify":     true,
 	"guard":      true,
 	"branch":     true,
+	"init":       true,
 	"version":    true,
 	"help":       true,
 	"completion": true,

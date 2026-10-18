@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { History } from './components/History'
 import { Metrics } from './components/Metrics'
 import { Guardrails } from './components/Guardrails'
@@ -433,7 +433,7 @@ function App() {
   // Clean up all WebSockets on unmount
   useEffect(() => {
     return () => {
-      Object.values(wsRefs.current).forEach(ws => ws.close())
+      Object.values(wsRefs.current).forEach((ws: WebSocket) => ws.close())
       wsRefs.current = {}
     }
   }, [])
@@ -505,7 +505,7 @@ function App() {
   }
 
   const handleLogout = () => {
-    Object.values(wsRefs.current).forEach(ws => ws.close())
+    Object.values(wsRefs.current).forEach((ws: WebSocket) => ws.close())
     wsRefs.current = {}
     setSessions({})
     setClosed({})
@@ -1179,7 +1179,7 @@ function App() {
                 <MshLogo size={28} />
               </div>
               <span className="brand-title">msh fleet</span>
-              <span className="brand-pill">~ swarm 1.6 ~</span>
+              <span className="brand-pill">~ swarm 1.7 ~</span>
             </div>
 
             <div className="navbar-center">

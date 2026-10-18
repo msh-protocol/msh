@@ -3,6 +3,7 @@ import React from 'react'
 export interface IconProps extends React.SVGProps<SVGSVGElement> {
   size?: number
   className?: string
+  style?: React.CSSProperties
 }
 
 export function TerminalIcon({ size = 14, className = '', ...props }: IconProps) {

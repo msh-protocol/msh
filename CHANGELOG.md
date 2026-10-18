@@ -6,10 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
-## [Unreleased]
 
-### Fixed
-- **Version Alignment & UI Badges** — Synchronized repository version badges in `README.md` to `v1.6.0`, updated the fleet brand header pill to `~ swarm 1.6 ~`, and corrected the speculative execution isolation badge in Fleet UI to `v1.6.0 Runtime Isolation`.
+## [1.7.0] - 2026-10-18
+
+### Added
+- **Official Agent Skill & `msh init`** — Added the official `msh` skill specification and `msh init` command to bootstrap AI agent workflows across `.agents/skills/msh`, `.claude/skills/msh`, and `.cursor/rules/msh.mdc`, with one-command installation via `npx skills add msh-protocol/msh --skill msh --yes`.
+- **Multi-Project & Workspace Scoping in Fleet UI** — Added automatic workspace detection from execution working directories (`cwd`) to isolate and filter commands across different projects (e.g. `gitstress`, `msh-protocol`). Includes a dedicated Workspace Scope selector bar with run counts, clickable inline workspace tags on command rows, workspace metadata in the expanded inspector docket, and dynamic stats recalculation scoped to the active workspace.
+
+### Changed
+- **Version Alignment & UI Badges** — Synchronized repository version badges in `README.md` to `v1.7.0`, updated the fleet brand header pill to `~ swarm 1.7 ~`, and updated the speculative execution isolation badge in Fleet UI to `v1.7.0 Runtime Isolation`.
 
 ## [1.6.0] - 2026-09-28
 

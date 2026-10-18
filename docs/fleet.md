@@ -58,6 +58,7 @@ The dashboard features a **Multi-Terminal Grid** allowing operators to supervise
 ### Execution History & Real-Time Telemetry
 The **History** tab provides a real-time, audit-grade log of every command executed across the fleet (the hub persists the request/response JSON of each exec).
 - **KPI Summary Strip**: High-level telemetry cards tracking Total Executions, Success Rate percentage, Average Execution Latency, and Workspaces with Modified Diffs.
+- **Multi-Project Workspace Scoping**: Automatic project detection from execution working directories (`cwd`). Filter the entire history ledger and telemetry counters down to a single workspace (e.g. `gitstress`, `msh-protocol`) using dedicated workspace pills or clicking inline workspace tags on command rows.
 - **Search & Multi-Filter Toolbar**: Real-time client-side search across commands, session IDs, run hashes, and modified filenames, along with status filter pills (`All`, `Succeeded`, `Failed`, `With Diffs`, `Root Cause`).
 - **Interactive Table**: Smooth rotating disclosure chevrons, relative time indicators (`Just now`, `2m ago`), origin badges (`Local` vs `Remote`), syntax-highlighted code panels, and quick command copy buttons.
 - **Telemetry Export & Download Chooser**: Click **Export History** to open the export chooser modal. Supports:

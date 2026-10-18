@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import {
   GitBranchIcon,
   PlusIcon,
@@ -277,7 +277,7 @@ export function Branches({ token }: { token: string }) {
           <div>
             <div className="branch-title-row">
               <h2 className="branches-title">Speculative Execution & Shadow Worktrees</h2>
-              <span className="branches-version-pill">v1.6.0 Runtime Isolation</span>
+              <span className="branches-version-pill">v1.7.0 Runtime Isolation</span>
             </div>
             <p className="branches-subtitle">
               Sub-second transactional git worktrees for parallel hypothesis exploration (arXiv:2512.12806). 

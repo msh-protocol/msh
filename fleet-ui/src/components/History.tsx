@@ -19,8 +19,24 @@ import {
   DownloadIcon,
   Trash2Icon,
   ShieldCheckIcon,
-  ShieldAlertIcon
+  ShieldAlertIcon,
+  FolderIcon
 } from './Icons'
+
+export function extractProjectFromCwd(cwd?: string): string {
+  if (!cwd) return 'local'
+  const normalized = cwd.replace(/\\/g, '/').replace(/\/+$/, '')
+  const parts = normalized.split('/').filter(Boolean)
+  if (parts.length === 0) return 'local'
+
+  // Subdirectories to skip when identifying project root
+  const subdirs = new Set(['oss', 'com', 'src', 'app', 'dashboard', 'packages', 'client', 'server', 'ui', 'web', 'pkg', 'cmd'])
+  let idx = parts.length - 1
+  while (idx > 0 && subdirs.has(parts[idx].toLowerCase())) {
+    idx--
+  }
+  return parts[idx] || 'local'
+}
 
 interface ExecutionRecord {
   ID: number
@@ -42,6 +58,7 @@ interface ParsedExecutionRecord extends ExecutionRecord {
   rootCause: any
   runHash: string
   cwd: string
+  project: string
   policyViolations: any[]
   riskLevel: string
 }
@@ -106,6 +123,7 @@ export function History({ token, nodes = [], onRerun }: {
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState('')
   const [filter, setFilter] = useState<'all' | 'success' | 'error' | 'diffs' | 'rootcause' | 'guard'>('all')
+  const [selectedProject, setSelectedProject] = useState<string>('all')
   const [autoRefresh, setAutoRefresh] = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [copiedId, setCopiedId] = useState<number | null>(null)
@@ -149,6 +167,7 @@ export function History({ token, nodes = [], onRerun }: {
       let parsedReq: any = null
       try { if (r.RespJSON) parsedResp = JSON.parse(r.RespJSON) } catch {}
       try { if (r.ReqJSON) parsedReq = JSON.parse(r.ReqJSON) } catch {}
+      const cwd = parsedResp?.cwd || parsedReq?.cwd || ''
       return {
         ...r,
         parsedResp,
@@ -157,22 +176,39 @@ export function History({ token, nodes = [], onRerun }: {
         fileDiffs: parsedResp?.file_diffs || {},
         rootCause: parsedResp?.error_root_cause || null,
         runHash: parsedResp?.run_hash || '',
-        cwd: parsedResp?.cwd || parsedReq?.cwd || '',
+        cwd,
+        project: extractProjectFromCwd(cwd),
         policyViolations: parsedResp?.policy_violations || [],
         riskLevel: parsedResp?.risk_level || '',
       }
     })
   }, [records])
 
+  const availableProjects = useMemo(() => {
+    const map: Record<string, number> = {}
+    parsedRecords.forEach(r => {
+      const p = r.project || 'local'
+      map[p] = (map[p] || 0) + 1
+    })
+    return Object.entries(map)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count)
+  }, [parsedRecords])
+
+  const projectScopedRecords = useMemo(() => {
+    if (selectedProject === 'all') return parsedRecords
+    return parsedRecords.filter(r => r.project === selectedProject)
+  }, [parsedRecords, selectedProject])
+
   const stats = useMemo(() => {
-    const successCount = records.filter(r => r.Status === 'success').length
-    const errorCount = records.filter(r => r.Status !== 'success').length
-    const diffsCount = parsedRecords.filter(r => r.filesChanged.length > 0).length
-    const rootCauseCount = parsedRecords.filter(r => !!r.rootCause).length
-    const guardCount = parsedRecords.filter(r => r.Status === 'blocked' || (r.policyViolations && r.policyViolations.length > 0)).length
-    const totalDuration = records.reduce((acc, r) => acc + (r.DurationMs || 0), 0)
-    const avgDuration = records.length > 0 ? Math.round(totalDuration / records.length) : 0
-    const successRate = records.length > 0 ? Math.round((successCount / records.length) * 100) : 100
+    const successCount = projectScopedRecords.filter(r => r.Status === 'success').length
+    const errorCount = projectScopedRecords.filter(r => r.Status !== 'success').length
+    const diffsCount = projectScopedRecords.filter(r => r.filesChanged.length > 0).length
+    const rootCauseCount = projectScopedRecords.filter(r => !!r.rootCause).length
+    const guardCount = projectScopedRecords.filter(r => r.Status === 'blocked' || (r.policyViolations && r.policyViolations.length > 0)).length
+    const totalDuration = projectScopedRecords.reduce((acc, r) => acc + (r.DurationMs || 0), 0)
+    const avgDuration = projectScopedRecords.length > 0 ? Math.round(totalDuration / projectScopedRecords.length) : 0
+    const successRate = projectScopedRecords.length > 0 ? Math.round((successCount / projectScopedRecords.length) * 100) : 100
 
     return {
       successCount,
@@ -183,10 +219,10 @@ export function History({ token, nodes = [], onRerun }: {
       avgDuration,
       successRate
     }
-  }, [records, parsedRecords])
+  }, [projectScopedRecords])
 
   const filteredRecords = useMemo(() => {
-    return parsedRecords.filter(r => {
+    return projectScopedRecords.filter(r => {
       if (filter === 'success' && r.Status !== 'success') return false
       if (filter === 'error' && r.Status === 'success') return false
       if (filter === 'diffs' && r.filesChanged.length === 0) return false
@@ -201,13 +237,15 @@ export function History({ token, nodes = [], onRerun }: {
         const matchFile = r.filesChanged.some((f: string) => f.toLowerCase().includes(q))
         const matchErr = r.rootCause ? `${r.rootCause.type} ${r.rootCause.message}`.toLowerCase().includes(q) : false
         const matchGuard = r.policyViolations?.some((v: any) => `${v.rule_id} ${v.message} ${v.risk}`.toLowerCase().includes(q))
-        if (!matchCmd && !matchSession && !matchHash && !matchFile && !matchErr && !matchGuard) {
+        const matchProject = r.project.toLowerCase().includes(q)
+        const matchCwd = r.cwd.toLowerCase().includes(q)
+        if (!matchCmd && !matchSession && !matchHash && !matchFile && !matchErr && !matchGuard && !matchProject && !matchCwd) {
           return false
         }
       }
       return true
     })
-  }, [parsedRecords, filter, searchQuery])
+  }, [projectScopedRecords, filter, searchQuery, selectedProject])
 
   const currentPage = Math.floor(offset / pageSize) + 1
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
@@ -349,6 +387,38 @@ export function History({ token, nodes = [], onRerun }: {
 
       {/* Main Ledger Card Container */}
       <div className="ledger-card">
+        {/* Workspace Scope Filter Bar */}
+        {availableProjects.length > 1 && (
+          <div className="ledger-workspace-bar">
+            <div className="workspace-label-wrap">
+              <FolderIcon size={12} className="workspace-icon" />
+              <span className="workspace-label">WORKSPACE:</span>
+            </div>
+            <div className="workspace-pills-list">
+              <button
+                type="button"
+                className={`workspace-pill ${selectedProject === 'all' ? 'active' : ''}`}
+                onClick={() => setSelectedProject('all')}
+              >
+                <span>All Workspaces</span>
+                <span className="pill-count mono">{parsedRecords.length}</span>
+              </button>
+              {availableProjects.map(({ name, count }) => (
+                <button
+                  key={name}
+                  type="button"
+                  className={`workspace-pill ${selectedProject === name ? 'active' : ''}`}
+                  onClick={() => setSelectedProject(name)}
+                >
+                  <span className="workspace-bullet" />
+                  <span className="workspace-name mono">{name}</span>
+                  <span className="pill-count mono">{count}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Table Filter & Search Header */}
         <div className="ledger-header">
           <div className="ledger-search-box">
@@ -494,6 +564,20 @@ export function History({ token, nodes = [], onRerun }: {
 
                       <td className="cell-command">
                         <div className="command-display">
+                          {r.project && r.project !== 'local' && (
+                            <button
+                              type="button"
+                              className={`project-tag-pill mono ${selectedProject === r.project ? 'active' : ''}`}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setSelectedProject(selectedProject === r.project ? 'all' : r.project)
+                              }}
+                              title={`Click to filter workspace: ${r.project}`}
+                            >
+                              <FolderIcon size={10} />
+                              <span>{r.project}</span>
+                            </button>
+                          )}
                           <span className="prompt-sym">$</span>
                           <span className="command-str mono" title={r.Command}>
                             {r.Command}
@@ -624,6 +708,12 @@ export function History({ token, nodes = [], onRerun }: {
 
                             {/* Meta Grid */}
                             <div className="inspector-meta-strip">
+                              <div className="meta-cell">
+                                <span className="meta-k">WORKSPACE</span>
+                                <span className="meta-v mono" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                  <FolderIcon size={11} /> {r.project}
+                                </span>
+                              </div>
                               <div className="meta-cell">
                                 <span className="meta-k">RUN HASH</span>
                                 <span className="meta-v mono">{r.runHash ? r.runHash.slice(0, 16) : '—'}</span>

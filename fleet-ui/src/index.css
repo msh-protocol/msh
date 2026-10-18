@@ -3475,6 +3475,120 @@ html, body {
   display: flex;
 }
 
+/* Workspace Scope Bar (Multi-project scoping) */
+.ledger-workspace-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: #f7f3ea;
+  border-bottom: 1px solid var(--border-color);
+  flex-wrap: wrap;
+}
+
+.workspace-label-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #7d6b5c;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  user-select: none;
+}
+
+.workspace-icon {
+  color: #5c3a2e;
+}
+
+.workspace-pills-list {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.workspace-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.workspace-pill:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: #c9bea9;
+}
+
+.workspace-pill.active {
+  background: #231f1d;
+  color: #fdfbf7;
+  border-color: #231f1d;
+  box-shadow: 0 1px 3px rgba(35, 31, 29, 0.15);
+}
+
+.workspace-bullet {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #385a49;
+}
+
+.workspace-pill.active .workspace-bullet {
+  background: #73b38c;
+}
+
+.workspace-pill .pill-count {
+  font-size: 10px;
+  opacity: 0.8;
+  padding: 1px 4px;
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 4px;
+}
+
+.workspace-pill.active .pill-count {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.project-tag-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #ede6d6;
+  border: 1px solid #dcd4c0;
+  color: #5c3a2e;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.project-tag-pill:hover {
+  background: #231f1d;
+  border-color: #231f1d;
+  color: #fdfbf7;
+}
+
+.project-tag-pill.active {
+  background: #5c3a2e;
+  border-color: #5c3a2e;
+  color: #fff;
+}
+
 .ledger-filter-group {
   display: flex;
   align-items: center;
