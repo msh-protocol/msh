@@ -1,52 +1,31 @@
-# Binaries
+# Binaries & Executables
 *.exe
 *.exe~
 *.dll
 *.so
 *.dylib
-/msh
-
-# Test binary, built with `go test -c`
-*.test
-
-# Output of the go coverage tool
-*.out
-
-# Go workspace file
-go.work
-go.work.sum
+bin/
 
 # Dependency directories
 vendor/
+node_modules/
 
-# IDE
+# IDE & OS
 .idea/
 .vscode/
-*.swp
-*.swo
-*~
-
-# OS
 .DS_Store
 Thumbs.db
+*.swp
 
-# Build output
-dist/
-!fleet-ui/dist/
-bin/
+# Commercial SaaS Control Plane (Private - not pushed to OSS)
+com/
 
+# Temporary & Move scripts
+move_to_oss.py
+scratch/
 
-check.md
-
-ROADMAP.md
-me.md
-
-.agents/
-
-test_pty.py
-
-# Runtime logs & shadow worktrees
-*.log
-.msh/branches/
-.msh/worktrees/
-.msh-meta.json
+# Local agent configuration & external skills
+.agents/AGENTS.md
+.agents/skills/*
+!.agents/skills/msh/
+skills-lock.json

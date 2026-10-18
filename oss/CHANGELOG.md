@@ -1,0 +1,194 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+
+
+## [1.7.0] - 2026-10-18
+
+### Added
+- **Official Agent Skill & `msh init`** — Added the official `msh` skill specification and `msh init` command to bootstrap AI agent workflows across `.agents/skills/msh`, `.claude/skills/msh`, and `.cursor/rules/msh.mdc`, with one-command installation via `npx skills add msh-protocol/msh --skill msh --yes`.
+- **Multi-Project & Workspace Scoping in Fleet UI** — Added automatic workspace detection from execution working directories (`cwd`) to isolate and filter commands across different projects (e.g. `gitstress`, `msh-protocol`). Includes a dedicated Workspace Scope selector bar with run counts, clickable inline workspace tags on command rows, workspace metadata in the expanded inspector docket, and dynamic stats recalculation scoped to the active workspace.
+
+### Changed
+- **Version Alignment & UI Badges** — Synchronized repository version badges in `README.md` to `v1.7.0`, updated the fleet brand header pill to `~ swarm 1.7 ~`, and updated the speculative execution isolation badge in Fleet UI to `v1.7.0 Runtime Isolation`.
+
+## [1.6.0] - 2026-09-28
+
+### Added
+- **Speculative Execution & Shadow Git Worktrees (`msh branch`)** — Implemented sub-second transactional state isolation for autonomous agents (arXiv:2512.12806, arXiv:2605.22781). Provisions isolated shadow git worktrees in `.msh/branches/<name>` allowing agents to trial speculative refactors and parallel hypotheses without polluting the developer's primary working tree.
+- **New CLI Subcommands (`msh branch`)**:
+  - `msh branch create <name>` — Instantly spins up an isolated shadow worktree anchored to any commit or ref.
+  - `msh branch list` — Lists active shadow branches, commit divergences, modified file counts, and run statistics.
+  - `msh branch run <name> "<cmd>"` — Executes commands strictly inside the designated shadow worktree without touching main.
+  - `msh branch diff <name>` — Displays unified git diff of all modifications made within the shadow worktree.
+  - `msh branch merge <name>` — Atomically merges verified solutions into the primary working tree and prunes the shadow worktree.
+  - `msh branch abort <name>` — Cleans up worktrees cleanly and emits a structured `SemanticPrunePayload` with `context_prune_turns` (arXiv:2608.03836) instructing LLM harnesses how many turns to rewind.
+- **Fleet UI Branches / Speculation Control Plane** — Added a dedicated `Branches` navigation tab to `msh fleet` featuring real-time shadow worktree status, an in-browser command execution runner, side-by-side diff inspectors, and one-touch merge/abort controls matching the vintage Bookbinder Editorial theme.
+- **REST Endpoints for Agent Swarms** — Added `/api/branches`, `/api/branch/create`, `/api/branch/run`, `/api/branch/diff`, `/api/branch/merge`, and `/api/branch/abort` to the fleet server.
+
+### Changed
+- **Guardrails Theme Harmonization & Vector Icons Upgrade** — Rethemed all Guardrails dashboard components to strictly adhere to the Vintage Literary Print / Bookbinder Editorial design system (Aged Book Paper `#fdfcf9` / `#eee8dc`, Warm Book Margin Rules `#ded7c7`, and Walnut / Lampblack Inks `#5c3a2e` / `#231f1d`), eliminating pitch-black containers and unreadable dark table headers. Replaced all raw OS emojis across navbar tabs, buttons, simulator banners, and the execution history ledger with calibrated SVG vector icons (`ShieldCheckIcon`, `ShieldAlertIcon`, `ZapIcon`, `AlertTriangleIcon`, `CheckIcon`, `SearchIcon`).
+- **Development Guidelines Enforced in `.agents`** — Codified strict UI design rules in [`.agents/AGENTS.md`](file:///c:/Users/tesse/Desktop/msh-protocol/.agents/AGENTS.md) requiring all future UI additions to maintain the Bookbinder Editorial theme and forbidding raw OS emojis in favor of SVG stroke components.
+
+## [1.5.0] - 2026-09-23
+
+### Added
+- **Pre-Execution Guardrails & Policy Engine** — Implemented a comprehensive three-tier security defense architecture (`pkg/guard`) designed specifically for autonomous agent tool use (arXiv:2607.22569, arXiv:2512.12806). Evaluates commands before spawning an OS process, blocking catastrophic deletions, drive wipes, fork bombs, and raw filesystem formatting with zero CPU execution time wasted.
+- **Tier 1 Catastrophic Safety Floor (Always Active)** — Hard-coded baseline blocking root and home deletions (`rm -rf /`, `rm -rf ~`), Windows recursive drive wipes (`rmdir /s /q C:\`), fork bombs (`:(){ :|:& };:`), raw disk zeroing (`dd ... of=/dev/sd*`), disk formatting (`mkfs.*`, `Format-Volume`), and recursive root permission changes (`chmod -R 777 /`).
+- **Tier 2 Configurable Project Policies (`.msh/policies.yaml`)** — Project-level security policy engine supporting regular expression pattern matching, risk tiers (`critical`, `high`, `moderate`, `low`), custom enforcement actions (`block` or `warn`), and explicit allowed/denied path boundaries.
+- **Tier 3 Strict Workspace Confinement (`--strict-workspace`)** — Zero-trust path traversal boundary enforcement blocking commands that attempt to escape project directories (`../../`), target system configuration roots (`/etc/`, `/var/`, `C:\Windows\`), or access sensitive credential vaults (`~/.ssh`, `~/.aws`).
+- **New CLI Subcommands (`msh guard`)**:
+  - `msh guard check "<cmd>"` — Pre-evaluates any command line against active policies without spawning a process; supports `--strict-workspace` and `--json`.
+  - `msh guard list` — Displays active security policies, actions, risk ratings, and regex match patterns.
+  - `msh guard init` — Scaffolds a starter `.msh/policies.yaml` file with production templates and explanations.
+- **Root & Passthrough Execution Flags**:
+  - Added `--strict-workspace` to `msh exec`, `msh wrap`, and smart passthrough mode.
+  - Added `--no-guard` escape hatch to bypass policy checks in trusted administrative sessions.
+- **Fleet UI Guardrails Management Dashboard & Interactive Simulator** — Added a dedicated `🛡️ Guardrails` tab to the embedded control plane featuring Three-Tier defense cards, an interactive pre-execution command simulator with sample attack triggers, and an active security policies matrix table.
+- **History Docket Security Badges & Guardrail Filter** — Added `[ 🛡️ blocked ]` and `[ ⚠️ warn ]` status badges in the execution history ledger, a dedicated `🛡️ Guardrails` filter pill, and a rich expandable security violation inspector displaying rule IDs, risk levels, and policy guidance.
+- **GitHub Linguist Language Overrides** — Configured `.gitattributes` to vendor embedded frontend assets (`fleet-ui/**`), auxiliary SDKs (`packages/**`), evals, and scripts, unsetting `linguist-detectable` on CSS, TypeScript, TSX, and HTML so repository statistics accurately reflect Go as the primary systems language.
+
+
+### Added
+- **Binary Asset Rollback Safeguards & Native In-Drawer Error Banners** — Eliminated raw browser `alert()` modal dialogs across the dashboard in favor of animated, in-drawer status and error banners matching the vintage editorial theme. Enhanced binary asset handling for compiled machine code (`.exe`, `.dll`, `.so`, `.dylib`, etc.): the Binary Specimen Card now displays an informative warning badge explaining that machine payloads lack textual patch history, cleanly disables the rollback button, and skips binary assets during full-run rollbacks so valid source code files can still be restored cleanly without failure.
+- **Vintage Literary Print & Muted Editorial Design Theme** — Replaced all harsh orange tones with an authentic bookbinder palette: Aged Book Paper (`#f6f3eb`, `#fdfcf9`), Antique Madder & Walnut Ink (`#5c3a2e`), Soft Lampblack Ink (`#231f1d`), Book Margin Rules (`#ded7c7`), and Aged Library Sage (`#385a49`).
+- **Terminal Brand Logo** — Upgraded the brand mark to a clean terminal glyph (`>_`) in walnut ink across the top navigation bar and local execution indicators.
+- **Distraction-Free Live Fleet Terminal Grid** — Streamlined the multi-terminal grid by removing cumbersome layout pickers and manual expand/restore controls, letting terminals flow naturally in a high-density, responsive grid.
+- **Dynamic Button Micro-Animations & Tactile Feedback** — Added spring-calibrated micro-animations across buttons, including smooth 360-degree rotation on telemetry refresh, counter-clockwise spin on restart/re-run (`RotateCcwIcon`), tactile scale presses (`scale(0.94)`), and hover elevation.
+- **Visual File Diff Drawer & Binary Specimen Card** — Elevated the slide-over diff inspector with multi-file tabs, dual line-number gutters, soft sage additions, madder red deletions, and an executive Binary Asset Specimen Card for compiled assets (e.g. `msh.exe`) without fake line numbers.
+- **In-Place Command Docket Accordion in History** — Replaced detached bottom inspectors with clean, in-place accordion dockets rendered directly beneath clicked rows, featuring clickable file chips, session ID fallbacks, and side-by-side JSON payloads.
+- **Centralized Swarm Broadcast Command Bar** — Built a centralized command bar atop the Live Fleet terminal grid to dispatch commands across all or selected daemons in parallel, complete with quick command presets (`git status`, `uptime`, `whoami`, `df -h`, `docker ps`), target selectors, and live streaming feedback.
+- **In-Terminal Keyword Search & Log Filtering** — Introduced per-tile keyword filtering that allows operators to search, filter, and inspect terminal stream logs live without losing log context.
+- **Follow Logs / Auto-Scroll Lock ("Tail" vs "Hold")** — Added per-tile auto-scroll toggles allowing operators to freeze the viewport during incoming log bursts to deeply inspect previous lines without snapping back to bottom.
+- **Terminal Log Export & Sharing** — Integrated one-click log clipboard copying and `.txt` log file downloading directly from each terminal tile header.
+- **Advanced Telemetry & Analytics Dashboard** — Overhauled the Metrics dashboard with an interactive SVG latency sparkline in walnut ink, a ranked Top Commands leaderboard, a categorized failure breakdown, and a cluster health matrix.
+- **Shell-Grade Terminal Command History (Up/Down Arrow Recall)** — Implemented interactive command history recall with draft preservation and `localStorage` persistence across both the Swarm Broadcast bar and individual node execution inputs (`$ ...`).
+- **Connected Node Fleet Status Pill & Slide-Over Drawer** — Added a tactile header status pill (`🟢 X Nodes Online`) opening a slide-over `NodeDrawer` with worker daemon specifications, live uptime tickers, active stream indicators, and a one-click `/api/nodes/ping` roundtrip latency tester.
+- **Global Keyboard Shortcuts & Cheatsheet Modal (`?`)** — Added cluster-wide hotkeys (<kbd>1</kbd>, <kbd>2</kbd>, <kbd>3</kbd> for tabs, <kbd>/</kbd> for broadcast search, <kbd>r</kbd> for telemetry refresh, <kbd>n</kbd> for node drawer, <kbd>?</kbd> for cheatsheet modal, and <kbd>Esc</kbd> for drawer/modal dismissal) with input-guard protection and vintage editorial cheatsheet.
+- **Side-by-Side Split Diff View in Diff Drawer** — Added a view mode toggle (`[ Unified | Split ]`) allowing operators to inspect file changes side-by-side (old file on left, new file on right with aligned line gutters) identical to VS Code and GitHub, complete with view preference persistence and dynamic drawer expansion to 1360px.
+- **Surgical Single-File Rollback (`Revert File` & `msh undo --file`)** — Added per-file rollback capabilities in both the Diff Drawer and the CLI (`msh undo <run-id> --file <relative-path>`), allowing operators to revert individual files without wiping out all changes from an execution.
+- **Telemetry Export & Download Chooser Modal** — Created a dedicated `ExportModal` supporting structured JSON, CSV spreadsheet, and TXT log formats, scope filtering, and native folder selection via `window.showSaveFilePicker()` to prevent unwanted file drops into default download folders.
+- **Execution History Record Deletion & Clear All History** — Added per-row delete buttons (`DELETE /api/history?id=<id>`) and a global "Clear History" button (`DELETE /api/history?all=true`) with two-step confirmation safeguards.
+
+## [1.3.0] - 2026-09-20
+
+### Added
+- **Atomic Workspace Rollback (`msh undo` & UI `Undo Changes ↺`)** — Built an atomic undo capability for autonomous agent executions. Developers and agents can run `msh undo [run-id]` or click **Undo Changes ↺** in the Fleet UI to invert per-command unified diff patches, safely deleting newly created files and restoring modified or deleted files.
+- **Semantic Error Root Cause Extraction (`error_root_cause`)** — Integrated language-aware error extraction in `pkg/sanitize/error_extractor.go` that isolates fatal compiler, syntax, and runtime exceptions (TypeScript `TSxxxx`, Python tracebacks and `pytest`, Go compiler/test errors, Rust compiler `error[Exxxx]`, C/C++, and shell command failures) into a structured `error_root_cause` object with file, line, and message details.
+- **Cryptographic Run Verification (`msh verify` & UI `Verify ⛨`)** — Introduced `msh verify [run-id]` and the `/api/verify` hub endpoint. Computes a tamper-evident SHA-256 `run_hash` across command inputs, working directory, outputs, and filesystem diffs, re-executing under identical conditions to assess bit-for-bit reproducibility and score execution drift.
+- **Visual Git-Style File Diff Drawer in Fleet UI** — Added a rich slide-over code diff inspector to the embedded React dashboard. When inspecting historical executions that modified files, operators can view interactive file chips and launch a unified git-style diff drawer featuring dual line-number gutters, color-coded addition/deletion rows, hunk headers, multi-file tabs, and a one-click raw diff copy button.
+- **Deterministic File Diff Generation (`pkg/fs/diff.go`)** — Introduced `fs.GenerateDiffs` to capture unified git diffs (`git diff -U3`) for modified files at execution time. Includes automatic synthetic diff generation for untracked/newly created files (`+`) and deleted files (`-`), token-preserving line truncations, and fallback support for non-git workspaces.
+- **Protocol Diff Payloads (`file_diffs`)** — Extended `ExecResponse` with `file_diffs` (`map[string]string`), preserving exact unified diff snapshots inside `fleet.json` and client responses for audit-grade flight recording.
+- **Universal CLI Execution History Persistence** — Integrated automated recording of all passthrough, exec, and wrap executions into `~/.msh/fleet.json`.
+- **On-Demand Diff API (`GET /api/diff`)** — Added a REST endpoint on the Fleet Hub allowing dashboards and clients to fetch real-time unified diffs for any file in an active workspace.
+- **Official Python SDK (`packages/python`)** — Released `msh-protocol` Python client library (`from msh import exec`) with typed dataclasses, local CLI spawn, HTTP fallback, and drop-in tool integration for LangChain, CrewAI, and Claude tool calling.
+- **Official TypeScript SDK (`packages/typescript`)** — Released `@msh-protocol/client` TypeScript package (`import { exec } from "@msh-protocol/client"`) for Node.js, providing typed, non-blocking execution wrappers for agent harnesses.
+- **Automated CI/CD Workflows** — Added GitHub Actions multi-OS test matrix (`.github/workflows/ci.yml`) testing Linux, macOS, and Windows.
+- **Automated Multi-Platform Release Pipeline** — Added `.github/workflows/release.yml` cross-compiling standalone signed binaries for 6 architectures (Linux amd64/arm64, macOS Intel/Apple Silicon, Windows amd64/arm64) with SHA256 checksums.
+- **One-Line Install Scripts** — Added `scripts/install.sh` (curl-to-bash for Linux/macOS) and `scripts/install.ps1` (PowerShell for Windows).
+- **Public CLI Evaluation Suite (`evals/`)** — Added automated benchmark running problematic real-world CLI patterns (ANSI color stripping, compiler dump context blowout truncation, interactive prompts, secret leakage).
+- **Modern OpenAI Secret Masking** — Expanded regex pattern in `pkg/sanitize/redact.go` to capture modern project API keys (`sk-proj-...` and `sk-admin-...`).
+- **Expanded Prompt Detection** — Added recognition for `npm init` confirmations, `npm install` proceed prompts, and SSH passphrase requests.
+
+## [1.2.0] - 2026-09-12
+
+### Added
+- **Smart Command Passthrough Runner (`msh <command>`)** — Transformed `msh` into a universal command runner (analogous to `sudo`, `time`, or `uv run`). Running `msh <command> [args...]` (e.g., `msh git status`, `msh npm test`, `msh cargo check`) executes any external command directly through the deterministic runtime without requiring `wrap` or outer quotes. Features platform-accurate argument reconstruction and escaping (Windows `CommandLineToArgvW` and POSIX quoting), smart subcommand disambiguation, leading wrapper flags support (e.g., `msh --max-lines 500 git log`, `msh --timeout 1m pytest`), and exact process exit code preservation.
+- **Streamed Execution History Persistence** — Integrated real-time database recording for remote `/stream/exec` runs on the fleet hub. Executions triggered from the dashboard terminal tiles are automatically persisted to `fleet.db`, making them immediately available in the History tab for inspection and replay.
+- **Human-in-the-Loop (HITL) Interactive Prompting in Fleet UI** — Integrated real-time prompt interception into the multi-terminal fleet dashboard. When commands hit interactive confirmations (`[y/N]`, custom input), terminal tiles highlight with a glowing amber action banner featuring one-click `[ Yes (y) ]` and `[ No (n) ]` buttons or a custom input field. Submitting sends an `{"type":"answer","data":answer}` frame over the `/stream/exec` WebSocket tunnel directly into process stdin to unblock remote execution live.
+- **One-Click Execution Replay from History** — Added an interactive daemon selector and `Re-run on Node ↻` action bar to the History tab. Operators inspecting historical `ExecRequest` records can dispatch the exact command with identical arguments to any active worker daemon with a single click, automatically navigating to the Multi-Terminal Grid and opening a live streaming session.
+- **Cryptographically Secure Token Generation (`crypto/rand`)** — Introduced `protocol.GenerateToken` utilizing 128 bits of OS entropy to generate high-entropy tokens (e.g., `msh-7e2a4f...`, `node-a22009...`, `session-8b1c4e...`). Completely eliminated predictable timestamp-based tokens across `msh fleet start`, `msh serve`, and execution sessions.
+- **Constant-Time Token Comparison (`crypto/subtle`)** — Introduced `protocol.SecureCompare` using `subtle.ConstantTimeCompare` across all HTTP and WebSocket authentication endpoints (`/api/*`, `/register`, `/stream/daemon`, `/stream/exec`, `/execute`), mitigating timing side-channel attacks.
+- **Decoupled Daemon Node IDs & `--id` Flag** — Decoupled secret bearer tokens from public node identifiers in `msh serve` and `msh fleet`. Daemons generate unique random node IDs by default and support an explicit `--id` flag, preventing token leakage in web dashboards and avoiding registry collisions when multiple daemons share an auth token.
+- **Live Fleet Metrics API & Dashboard** — Added a real-time `GET /api/metrics` endpoint on the fleet hub computing actual fleet metrics from active registrations and database execution records (total executions, active daemons, average latency, success/failure counts, reliability rate, and total compute time). Removed all mock/static placeholder data from the dashboard Metrics tab in favor of live polling.
+- **Fleet Multi-Terminal Grid** — Upgraded the embedded fleet dashboard with a real-time multi-terminal grid for live observability of distributed agent swarms. Supports streaming multiple agent terminals simultaneously with independent WebSocket tunnels and buffers, flexible layouts (`Auto Grid`, `1 Column`, `2 Columns`, `3 Columns`), bulk controls (`Connect All`, `Disconnect All`, `Clear All`, `Close All`), per-tile controls (maximize/expand tile, pause, reconnect, clear buffer, close), live pulsating status badges, and log line counters. Passes authentication tokens dynamically on WebSocket connections to satisfy hub security.
+- **Execution History Pagination & Replay** — Added pagination (`limit` and `offset`) to `/api/history` with `X-Total-Count` headers, allowing operators to browse through large execution logs. The fleet dashboard now includes previous/next page navigation, record counts, and expand/collapse execution inspection showing the raw `ExecRequest` and `ExecResponse` payloads for instant deterministic replay.
+- **Docker & Kubernetes Engine Streaming & Policy Answering** — Upgraded Docker and Kubernetes execution engines to implement the `StreamingEngine` interface, enabling interactive prompt detection and answering within containers and pods. Added support for `.msh/prompts.yaml` reusable answer policy rules with regex matching.
+- **Fleet Remote Streaming** — Added a `/stream/exec` WebSocket endpoint on the fleet hub. A remote client can now stream a command to any registered daemon: it connects to `ws://<hub>/stream/exec?token=<hub-token>&id=<daemon-id>`, sends a `start` frame carrying an `ExecRequest`, and receives live `output`/`prompt`/`result` events while relaying `answer`/`stop` frames. The hub tunnels the run to the target daemon over its existing registration connection and streams events, answers, and cancellation back — no inbound ports on the daemon required. The daemon executes with the same streaming engine as a local `/stream/exec`, so prompts can be answered mid-flight and results carry the standard `ExecResponse`. If `id` is omitted, the hub picks any registered daemon. `FleetMsg` gained `id` and `request` fields for the relay protocol; daemon tail-log writes are now serialized through a write pump shared with relayed exec events.
+- **Live Streaming Exec** — New `/stream/exec` WebSocket endpoint on `msh serve`. Output streams to the client in real time (`{"type":"output"}` events) and interactive prompts can be answered mid-flight (`{"type":"prompt"}` → `{"type":"answer"}`), instead of pre-supplying all answers up front. Each run ends with a `{"type":"result"}` carrying the standard `ExecResponse`. The subprocess engine streams; docker/kubernetes engines fall back to a buffered run flushed on completion.
+- **Interactive Prompt Answering** — Agents can now answer interactive prompts at runtime via `PromptAnswers` (`prompt_answers`). msh streams command output in real time, detects prompts (`[y/N]`, `password:`, etc.), and feeds the next answer to the process stdin instead of blocking. A run is only marked `blocked` if prompts remain after all answers are consumed. Exposed as the repeatable `--answer` flag (`msh exec`/`msh wrap`), the HTTP/JSON `prompt_answers` field, and the MCP `prompt_answer` option.
+- **Secret Redaction** — `RedactSecrets` now masks API keys, tokens, and secrets from command output before it reaches the agent. Redaction is on by default (per command, MCP, and HTTP paths) and combines two layers: exact-value masking of environment secrets (env vars, `.env` values, session env) and shape-based masking of well-known formats (AWS access keys, GitHub tokens, Slack tokens, OpenAI/Anthropic/Stripe/Google keys, npm tokens, JWTs, private key blocks). Hook (`pre_exec`/`post_exec`) output is redacted too. Disable with `--no-redact` (CLI) or `"redact_secrets": false` (JSON/MCP).
+
+### Fixed
+- **Timing Side-Channel Vulnerabilities** — Fixed token comparison vulnerabilities across fleet hub and daemon servers by replacing variable-time string comparisons (`==`) with constant-time byte comparisons.
+- **Predictable Token & Session ID Vulnerabilities** — Resolved predictability flaws (CWE-330) where administrative tokens and session IDs were generated from timestamps (`time.Now()`), allowing potential brute-force guessing.
+- **Fleet WebSocket Write Race Condition** — Fixed concurrent writes to agent websocket connections during stream start/stop by routing lifecycle frames through the thread-safe `Node.SendMessage` pump.
+- **Stream Goroutine & Resource Leaks** — Added context cancellation on UI client disconnects in `/stream/daemon`, preventing tailing loops from leaking memory and hanging in background.
+- **Path Traversal Protection** — Hardened daemon log stream path resolution to reject directory traversal characters (`/`, `\`, `..`).
+
+### Changed
+- **Protocol** — `ExecRequest` gains `prompt_answers` (answers fed to interactive prompts, in order) and `redact_secrets` (default true when unset); `ExecResponse` gains `answers_used` (how many answers were consumed) and `redacted` (which secret names/token formats were masked).
+- **`Executor`** — The shared request-prep and response-finalize stages were extracted so buffered and streaming runs produce identical results; `Engine.Run` now reports how many prompt answers were consumed.
+- **Engines** — The subprocess engine streams output in real time and feeds answers when provided (both piped and PTY modes) via the new `StreamingEngine` interface; docker/kubernetes engines report consumed answers but remain buffered.
+
+## [1.0.0] - 2026-08-07
+
+### Added
+- **`msh-fleet` (Enterprise Control Plane)** — Introduced the `msh fleet start` subcommand which spins up a centralized WebSocket registry hub (port 9000) for managing distributed `msh` daemons across your infrastructure.
+- **Embedded React Dashboard** — A premium, dark-mode UI built with React and Vite is now embedded directly into the Go binary via `go:embed`. It auto-updates and displays all connected agents.
+- **Reverse NAT Tunneling** — `msh serve` now connects outbound to the Fleet Hub via WebSockets, allowing the hub to tunnel `stream_start`/`stream_stop` commands and live log data through NATs and firewalls. This powers the "Live Terminal" feature in the dashboard.
+- **Fleet Authentication** — Token-based security requiring `Authorization: Bearer <token>` for agent registration and UI API access.
+
+## [0.6.0] - 2026-08-07
+
+### Added
+- **WebSocket Streaming** — Added the `/stream/daemon` WebSocket endpoint to the `msh serve` HTTP daemon. This enables real-time tailing of long-running daemon logs, paving the way for live observability dashboards. Connections authenticate via the `?token=` query parameter.
+
+## [0.5.0] - 2026-08-07
+
+### Added
+- **Long-Running Daemons** — Introduced the `msh daemon` subcommand (`start`, `logs`, `kill`, `status`) to manage and stream logs from long-running background processes (like `npm run dev`) without blocking the execution loop.
+- **Native `.env` Injection** — Added the `env_file` field to `ExecRequest` and the `--env-file` CLI flag to natively parse and inject environment variables from `.env` files before command execution.
+
+## [0.4.0] - 2026-08-07
+
+### Added
+- **Plugin / Hook System** — Added support for `.msh/hooks.yaml` to define pre/post execution scripts (e.g. security scanners, telemetry loggers). Hooks are executed natively and their outputs are attached to the `ExecResponse` payload.
+- **`msh wrap` Subcommand** — Introduced `msh wrap "command"` which executes a command through the deterministic runtime but prints the sanitized text directly to standard output/error instead of formatting it as JSON.
+- **MCP Server** — Introduced `msh mcp` subcommand which starts a Model Context Protocol (MCP) server over standard I/O. This allows agents like Claude Desktop and Cursor to natively load the `execute_command` tool without custom integration code.
+
+### Changed
+- **Performance: Hybrid Filesystem Watcher** — Replaced the slow before/after full directory hashing with an `fsnotify` real-time watcher. Command execution in massive monorepos is now instantaneous while still capturing exact `files_changed` events.
+
+## [0.3.0] - 2026-08-06
+
+### Added
+- **True Terminal Emulation (PTY)** — `msh` can now run commands inside a pseudo-terminal by passing `"use_pty": true` in the JSON payload (or `--pty` in the CLI). This allows AI agents to interact with complex CLI tools that refuse to run outside a TTY (like SSH or Docker). Note that in PTY mode, `stderr` is inherently merged into `stdout`.
+
+## [0.2.0] - 2026-08-06
+
+### Added
+- **HTTP Daemon Mode** — `msh serve` starts an HTTP server (default port 8080) with a `POST /execute` endpoint.
+- **Stateful Network Sessions** — Added `SessionID` to `ExecRequest` and `ExecResponse`. Passing a `SessionID` over HTTP maintains the current working directory and environment variables across multiple REST requests.
+- **Thread-Safe Session Manager** — Added a concurrency-safe `SessionManager` that supports multi-tenant daemon execution and automatically reaps idle sessions after 30 minutes.
+
+## [0.1.0] - 2026-08-06
+
+### Added
+
+- **Core Protocol** — `ExecRequest` and `ExecResponse` JSON contracts defining the machine-readable execution interface for AI agents.
+- **ANSI Sanitization** — Regex-based stripping of all ANSI escape codes (CSI, OSC, 256-color, cursor movement) from command output.
+- **Output Truncation** — Smart head/tail truncation that preserves the first and last N/2 lines with a `[msh: truncated X lines to save tokens]` marker. Prevents token blowouts from massive error dumps.
+- **Interactive Prompt Detection** — Pattern-matching engine that detects `[y/N]`, `password:`, `Are you sure`, and other interactive prompts that would hang an agent's execution loop.
+- **Timeout Enforcement** — Per-command timeout via `--timeout` flag. Commands exceeding the limit are killed and return `"status": "timeout"`.
+- **Filesystem Change Detection** — Stat-based pre/post snapshots using mtime + size comparison to detect added, modified, and deleted files after each command.
+- **Session State Management** — Persistent working directory tracking and environment variable layering across sequential commands within a session.
+- **Cross-Platform Execution** — Automatic shell selection (`cmd /C` on Windows, `sh -c` on Unix).
+- **CLI Interface** — Cobra-based CLI with `msh exec "command"` and `msh version` subcommands.
+- **CLI Flags** — `--pretty`, `--cwd`, `--timeout`, `--max-lines`, `--no-files`.
+- **Apache 2.0 License** — Permissive licensing with patent protection for maximum enterprise adoption.
+
+### Technical Details
+
+- Written in Go 1.26
+- Zero external runtime dependencies (single static binary)
+- 19 unit tests across protocol and sanitize packages
+- Execution latency overhead: ~30ms per command
+
+
+[Unreleased]: https://github.com/msh-protocol/msh/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/msh-protocol/msh/releases/tag/v0.1.0

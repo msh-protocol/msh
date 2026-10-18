@@ -1,0 +1,52 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+/msh
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Go workspace file
+go.work
+go.work.sum
+
+# Dependency directories
+vendor/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build output
+dist/
+!fleet-ui/dist/
+bin/
+
+
+check.md
+
+ROADMAP.md
+me.md
+
+.agents/
+
+test_pty.py
+
+# Runtime logs & shadow worktrees
+*.log
+.msh/branches/
+.msh/worktrees/
+.msh-meta.json
