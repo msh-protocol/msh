@@ -12,6 +12,7 @@ Auto-handles prompts, truncates output, redacts secrets, and lets you undo agent
 <p align="center">
 <a href="https://github.com/msh-protocol/msh/actions/workflows/ci.yml"><img src="https://github.com/msh-protocol/msh/actions/workflows/ci.yml/badge.svg" alt="CI Status" /></a>
 <a href="https://github.com/msh-protocol/msh/releases"><img src="https://img.shields.io/badge/version-v1.7.0-5c3a2e.svg" alt="Version" /></a>
+<a href="https://skills.sh/msh-protocol/msh/msh"><img src="https://img.shields.io/badge/skills.sh-msh-black.svg?style=flat&logo=vercel" alt="skills.sh" /></a>
 <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License" /></a>
 <a href="https://pypi.org/project/msh-protocol/"><img src="https://img.shields.io/badge/pypi-msh--protocol-blue.svg" alt="PyPI" /></a>
 <a href="https://www.npmjs.com/package/@msh-protocol/client"><img src="https://img.shields.io/badge/npm-@msh--protocol/client-red.svg" alt="npm" /></a>
@@ -58,10 +59,23 @@ go install github.com/msh-protocol/msh/cmd/msh@latest
 
 ### 2. Teach your agent
 
+Install the official skill for **Antigravity**, **Cursor**, **Windsurf**, **Claude Code**, and **OpenCode**:
+
 ```bash
-npx skills add msh-protocol/msh --skill msh --yes
-# or
+# Add to current project
+npx skills add msh-protocol/msh
+
+# Or install globally across all projects on your machine
+npx skills add msh-protocol/msh -g
+```
+
+Or configure via the `msh` CLI:
+```bash
+# Generate rules and skills in the current workspace
 msh init
+
+# Or install globally for all Antigravity projects
+msh init --global
 ```
 
 ---
