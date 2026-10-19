@@ -54,45 +54,83 @@ msh sits between your agent execution harness and the operating system as a dete
    - Catastrophic root wipes, fork bombs, and directory traversal escapes are intercepted before OS process creation.
 `
 
+var globalFlag bool
+
 var initCmd = &cobra.Command{
 	Use:   "init",
-	Short: "Initialize msh agent skills and rules in the current workspace",
-	Long:  "Writes the official msh skill and rules into .agents/skills/msh, .claude/skills/msh, and .cursor/rules.",
+	Short: "Initialize msh agent skills and rules in the current workspace or globally",
+	Long:  "Writes the official msh skill and rules for Antigravity, Cursor, Windsurf, OpenCode, and Claude Code.",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		type targetInfo struct {
+			path  string
+			agent string
+		}
+
+		if globalFlag {
+			homeDir, err := os.UserHomeDir()
+			if err != nil {
+				return fmt.Errorf("failed to get user home directory: %w", err)
+			}
+
+			globalTargets := []targetInfo{
+				{path: filepath.Join(homeDir, ".gemini", "config", "skills", "msh", "SKILL.md"), agent: "Global Antigravity Skill"},
+				{path: filepath.Join(homeDir, ".gemini", "config", "rules", "msh.md"), agent: "Global Antigravity Rule"},
+			}
+
+			for _, target := range globalTargets {
+				dir := filepath.Dir(target.path)
+				if err := os.MkdirAll(dir, 0755); err != nil {
+					return fmt.Errorf("failed to create directory %s: %w", dir, err)
+				}
+				if err := os.WriteFile(target.path, []byte(skillContent), 0644); err != nil {
+					return fmt.Errorf("failed to write %s: %w", target.path, err)
+				}
+				fmt.Printf("✓ Installed %-45s (%s)\n", target.path, target.agent)
+			}
+
+			fmt.Println("\nSuccessfully installed msh globally for Antigravity!")
+			fmt.Println("All existing and future Antigravity projects will now use msh automatically.")
+			return nil
+		}
+
 		cwd, err := os.Getwd()
 		if err != nil {
 			return fmt.Errorf("failed to get current directory: %w", err)
 		}
 
-		targets := []string{
-			filepath.Join(cwd, ".agents", "skills", "msh", "SKILL.md"),
-			filepath.Join(cwd, ".claude", "skills", "msh", "SKILL.md"),
-			filepath.Join(cwd, ".cursor", "rules", "msh.mdc"),
+		targets := []targetInfo{
+			{path: filepath.Join(cwd, "AGENTS.md"), agent: "Universal Agent Rule (Antigravity/OpenCode)"},
+			{path: filepath.Join(cwd, ".agents", "skills", "msh", "SKILL.md"), agent: "Antigravity Skill"},
+			{path: filepath.Join(cwd, ".cursor", "rules", "msh.mdc"), agent: "Cursor Rule"},
+			{path: filepath.Join(cwd, ".windsurfrules"), agent: "Windsurf Rule"},
+			{path: filepath.Join(cwd, ".opencode", "skills", "msh", "SKILL.md"), agent: "OpenCode Skill"},
+			{path: filepath.Join(cwd, ".claude", "skills", "msh", "SKILL.md"), agent: "Claude Code Skill"},
 		}
 
 		createdCount := 0
 		for _, target := range targets {
-			dir := filepath.Dir(target)
+			dir := filepath.Dir(target.path)
 			if err := os.MkdirAll(dir, 0755); err != nil {
 				return fmt.Errorf("failed to create directory %s: %w", dir, err)
 			}
-			if err := os.WriteFile(target, []byte(skillContent), 0644); err != nil {
-				return fmt.Errorf("failed to write %s: %w", target, err)
+			if err := os.WriteFile(target.path, []byte(skillContent), 0644); err != nil {
+				return fmt.Errorf("failed to write %s: %w", target.path, err)
 			}
-			relPath, err := filepath.Rel(cwd, target)
+			relPath, err := filepath.Rel(cwd, target.path)
 			if err != nil {
-				relPath = target
+				relPath = target.path
 			}
-			fmt.Printf("✓ Created %s\n", relPath)
+			fmt.Printf("✓ Created %-45s (%s)\n", relPath, target.agent)
 			createdCount++
 		}
 
-		fmt.Printf("\nSuccessfully initialized msh skill across %d agent locations.\n", createdCount)
-		fmt.Println("AI coding agents in this workspace will now use msh automatically.")
+		fmt.Printf("\nSuccessfully initialized msh across %d agent ecosystems.\n", createdCount)
+		fmt.Println("AI coding agents (Antigravity, Cursor, Windsurf, OpenCode, Claude Code) in this project will now use msh automatically.")
 		return nil
 	},
 }
 
 func init() {
+	initCmd.Flags().BoolVarP(&globalFlag, "global", "g", false, "Install msh skill and rule globally for all Antigravity projects (~/.gemini/config)")
 	rootCmd.AddCommand(initCmd)
 }
