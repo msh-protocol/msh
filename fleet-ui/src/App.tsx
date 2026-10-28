@@ -1179,7 +1179,7 @@ function App() {
                 <MshLogo size={28} />
               </div>
               <span className="brand-title">msh fleet</span>
-              <span className="brand-pill">~ swarm 1.7 ~</span>
+              <span className="brand-pill">~ swarm 1.8 ~</span>
             </div>
 
             <div className="navbar-center">

@@ -138,7 +138,11 @@ func (e *Executor) prepare(req protocol.ExecRequest, startTime time.Time) *prep 
 	// Resolve timeout
 	p.timeout = req.Timeout
 	if p.timeout == 0 {
-		p.timeout = protocol.DefaultTimeout
+		if IsPersistentServerCommand(req.Command) {
+			p.timeout = UnboundedServerTimeout
+		} else {
+			p.timeout = protocol.DefaultTimeout
+		}
 	}
 
 	// Resolve max output lines
@@ -239,8 +243,8 @@ func (e *Executor) prepare(req protocol.ExecRequest, startTime time.Time) *prep 
 		p.policy = policyConfig.Resolver()
 	}
 
-	// 2. Start Hybrid Filesystem Watcher if file detection is enabled
-	if req.DetectFiles {
+	// 2. Start Hybrid Filesystem Watcher if file detection is enabled and command is not read-only
+	if req.DetectFiles && !IsReadOnlyInspectionCommand(p.req.Command) {
 		w, wErr := fs.NewWatcher(p.cwd, defaultIgnorePatterns())
 		if wErr == nil {
 			if startErr := w.Start(); startErr == nil {

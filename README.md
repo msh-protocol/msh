@@ -11,7 +11,7 @@ Auto-handles prompts, truncates output, redacts secrets, and lets you undo agent
 
 <p align="center">
 <a href="https://github.com/msh-protocol/msh/actions/workflows/ci.yml"><img src="https://github.com/msh-protocol/msh/actions/workflows/ci.yml/badge.svg" alt="CI Status" /></a>
-<a href="https://github.com/msh-protocol/msh/releases"><img src="https://img.shields.io/badge/version-v1.7.0-5c3a2e.svg" alt="Version" /></a>
+<a href="https://github.com/msh-protocol/msh/releases"><img src="https://img.shields.io/badge/version-v1.8.0-5c3a2e.svg" alt="Version" /></a>
 <a href="https://skills.sh/msh-protocol/msh/msh"><img src="https://img.shields.io/badge/skills.sh-msh-black.svg?style=flat&logo=vercel" alt="skills.sh" /></a>
 <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License" /></a>
 <a href="https://pypi.org/project/msh-protocol/"><img src="https://img.shields.io/badge/pypi-msh--protocol-blue.svg" alt="PyPI" /></a>
