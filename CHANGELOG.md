@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [1.8.0] - 2026-10-28
+
+### Added
+- **Persistent Dev Server Auto-Detection (`UnboundedServerTimeout`)** — Added intelligent heuristics in `pkg/execution/server_detect.go` that detect long-running dev servers, watchers, and listeners (`next dev`, `vite`, `nuxt dev`, `astro dev`, `npm run dev`, `python -m http.server`, `flask run`, `uvicorn`, `docker compose up`, etc.). When detected without an explicit `--timeout` override, `msh` automatically scales the timeout from the default 5-minute wall to an unbounded 24-hour daemon window (`24 * time.Hour`), preventing background dev servers from being terminated mid-session.
+- **Read-Only Fast-Path Latency Optimization** — Added pure read-only inspection detection in `pkg/execution/fast_path.go` (`whoami`, `pwd`, `netstat`, `which`, `where`, `hostname`, `uname`, `node -v`, `git status`, `git log`, `git diff`, etc.). Skips directory tree walking and filesystem watcher (`fsnotify`) initialization entirely for commands that cannot mutate files, shaving 100ms–200ms of overhead off sequential agent checks.
+- **Accurate Windows Process Liveness & Exit Codes** — Replaced `os.FindProcess` (which always returns alive on Windows) with native Windows kernel inspection (`syscall.OpenProcess` + `syscall.GetExitCodeProcess` with `STILL_ACTIVE = 259`). Tracks exact process exit codes in `DaemonState.ExitCode`.
+- **Post-Mortem Daemon Crash Telemetry** — Hardened `msh daemon logs <id>` to retain and report crash diagnostics. If a background daemon terminates on startup (e.g. Windows batch wrappers like `npm.cmd` crashing or exiting without log output), `ReadLogs` reports the PID and exit code instead of returning an empty string.
+
+### Changed
+- **Version Alignment & UI Badges** — Synchronized repository version badges in `README.md` to `v1.8.0`, updated the fleet brand header pill to `~ swarm 1.8 ~`, and updated the speculative execution isolation badge in Fleet UI to `v1.8.0 Runtime Isolation`.
+
 ## [1.7.0] - 2026-10-18
 
 ### Added

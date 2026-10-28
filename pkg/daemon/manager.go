@@ -20,6 +20,7 @@ type DaemonState struct {
 	Pid       int       `json:"pid"`
 	StartTime time.Time `json:"start_time"`
 	Status    string    `json:"status"` // running, exited, killed
+	ExitCode  int       `json:"exit_code,omitempty"`
 }
 
 type Manager struct {
@@ -45,24 +46,32 @@ func (m *Manager) Start(commandStr, cwd string, env map[string]string) (*DaemonS
 		return nil, err
 	}
 
+	if cwd == "" {
+		if cur, err := os.Getwd(); err == nil {
+			cwd = cur
+		}
+	}
+	if abs, err := filepath.Abs(cwd); err == nil {
+		cwd = abs
+	}
+
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {
-		cmd = exec.Command("cmd", "/C", commandStr)
+		cmd = exec.Command("cmd.exe", "/C", commandStr)
 	} else {
 		cmd = exec.Command("sh", "-c", commandStr)
 	}
 	setDetached(cmd)
-
 	cmd.Dir = cwd
-	if len(env) > 0 {
-		cmd.Env = os.Environ()
-		for k, v := range env {
-			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
-		}
+
+	// Always inherit current process environment, then layer requested variables
+	cmd.Env = os.Environ()
+	for k, v := range env {
+		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
 	}
 
 	// Redirect output to a log file
-	logFile, err := os.OpenFile(filepath.Join(daemonDir, "output.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
+	logFile, err := os.OpenFile(filepath.Join(daemonDir, "output.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +82,7 @@ func (m *Manager) Start(commandStr, cwd string, env map[string]string) (*DaemonS
 		logFile.Close()
 		return nil, err
 	}
-	// Close our handle — the child process has inherited the fd.
+	// Close our parent handle so child owns the inherited descriptor
 	logFile.Close()
 
 	state := &DaemonState{
@@ -118,15 +127,14 @@ func (m *Manager) GetState(id string) (*DaemonState, error) {
 		return nil, err
 	}
 
-	// Check if process is still alive
-	process, err := os.FindProcess(state.Pid)
-	if err == nil {
-		// On Windows, FindProcess always succeeds, we have to check differently or rely on it
-		// For cross-platform simplicity, a better check would be needed, but this is v1
-		_ = process // alive (mostly)
-	} else {
-		state.Status = "exited"
-		m.saveState(&state)
+	// Check if process is still alive using platform-accurate inspection
+	if state.Status == "running" {
+		alive, exitCode := checkProcessLiveness(state.Pid)
+		if !alive {
+			state.Status = "exited"
+			state.ExitCode = exitCode
+			_ = m.saveState(&state)
+		}
 	}
 
 	return &state, nil
@@ -159,11 +167,20 @@ func (m *Manager) ReadLogs(id string, maxLines int) (string, error) {
 	if strings.Contains(id, "/") || strings.Contains(id, "\\") || strings.Contains(id, "..") {
 		return "", fmt.Errorf("invalid daemon id")
 	}
-	// Simple implementation: read whole file, truncate if necessary.
-	// For huge logs, we would want to read backwards.
+	state, _ := m.GetState(id)
+
 	data, err := os.ReadFile(filepath.Join(m.baseDir, id, "output.log"))
 	if err != nil {
+		if state != nil && state.Status == "exited" {
+			return fmt.Sprintf("[msh:daemon] process %d exited with code %d (no output file was generated)\n", state.Pid, state.ExitCode), nil
+		}
 		return "", err
 	}
-	return string(data), nil // skipping truncation logic for now for brevity
+
+	content := strings.TrimSpace(string(data))
+	if content == "" && state != nil && state.Status == "exited" {
+		return fmt.Sprintf("[msh:daemon] process %d exited with code %d (no output was written to output.log)\n", state.Pid, state.ExitCode), nil
+	}
+
+	return string(data), nil
 }

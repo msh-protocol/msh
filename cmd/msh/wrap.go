@@ -44,6 +44,11 @@ func runWrap(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
+	if !cmd.Flags().Changed("timeout") && execution.IsPersistentServerCommand(command) {
+		timeout = execution.UnboundedServerTimeout
+		fmt.Fprintf(os.Stderr, "[msh] persistent server detected — running with unbounded timeout (24h)\n")
+	}
+
 	// Create session
 	session, err := execution.NewSession(flagCwd)
 	if err != nil {

@@ -16,11 +16,12 @@ import (
 // PassthroughFlags represents configuration options parsed from the command line
 // when running in passthrough mode.
 type PassthroughFlags struct {
-	Cwd      string
-	Timeout  time.Duration
-	MaxLines int
-	Pty      bool
-	NoFiles  bool
+	Cwd             string
+	Timeout         time.Duration
+	ExplicitTimeout bool
+	MaxLines        int
+	Pty             bool
+	NoFiles         bool
 	EnvFile         string
 	NoRedact        bool
 	Answers         []string
@@ -98,11 +99,13 @@ func ParsePassthroughArgs(args []string) (flags PassthroughFlags, cmdStr string,
 		} else if arg == "--timeout" && i+1 < len(args) {
 			if d, err := time.ParseDuration(args[i+1]); err == nil {
 				flags.Timeout = d
+				flags.ExplicitTimeout = true
 			}
 			i += 2
 		} else if strings.HasPrefix(arg, "--timeout=") {
 			if d, err := time.ParseDuration(strings.TrimPrefix(arg, "--timeout=")); err == nil {
 				flags.Timeout = d
+				flags.ExplicitTimeout = true
 			}
 			i++
 		} else if (arg == "--max-lines" || arg == "-m") && i+1 < len(args) {
@@ -255,6 +258,11 @@ func RunPassthrough(flags PassthroughFlags, command string) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "[msh] failed to create session: %v\n", err)
 		os.Exit(1)
+	}
+
+	if !flags.ExplicitTimeout && execution.IsPersistentServerCommand(command) {
+		flags.Timeout = execution.UnboundedServerTimeout
+		fmt.Fprintf(os.Stderr, "[msh] persistent server detected — running with unbounded timeout (24h)\n")
 	}
 
 	var redactSecrets *bool
