@@ -42,6 +42,8 @@ interface ExecutionRecord {
   ID: number
   Timestamp: string
   SessionID: string
+  StepID?: string
+  PromptIntent?: string
   Command: string
   Status: string
   ExitCode: number
@@ -53,6 +55,8 @@ interface ExecutionRecord {
 interface ParsedExecutionRecord extends ExecutionRecord {
   parsedResp: any
   parsedReq: any
+  stepId: string
+  promptIntent: string
   filesChanged: string[]
   fileDiffs: Record<string, string>
   rootCause: any
@@ -168,10 +172,14 @@ export function History({ token, nodes = [], onRerun }: {
       try { if (r.RespJSON) parsedResp = JSON.parse(r.RespJSON) } catch {}
       try { if (r.ReqJSON) parsedReq = JSON.parse(r.ReqJSON) } catch {}
       const cwd = parsedResp?.cwd || parsedReq?.cwd || ''
+      const stepId = r.StepID || parsedReq?.step_id || parsedResp?.step_id || ''
+      const promptIntent = r.PromptIntent || parsedReq?.prompt_intent || parsedResp?.prompt_intent || ''
       return {
         ...r,
         parsedResp,
         parsedReq,
+        stepId,
+        promptIntent,
         filesChanged: parsedResp?.files_changed || [],
         fileDiffs: parsedResp?.file_diffs || {},
         rootCause: parsedResp?.error_root_cause || null,
@@ -239,7 +247,9 @@ export function History({ token, nodes = [], onRerun }: {
         const matchGuard = r.policyViolations?.some((v: any) => `${v.rule_id} ${v.message} ${v.risk}`.toLowerCase().includes(q))
         const matchProject = r.project.toLowerCase().includes(q)
         const matchCwd = r.cwd.toLowerCase().includes(q)
-        if (!matchCmd && !matchSession && !matchHash && !matchFile && !matchErr && !matchGuard && !matchProject && !matchCwd) {
+        const matchIntent = r.promptIntent.toLowerCase().includes(q)
+        const matchStep = r.stepId.toLowerCase().includes(q)
+        if (!matchCmd && !matchSession && !matchHash && !matchFile && !matchErr && !matchGuard && !matchProject && !matchCwd && !matchIntent && !matchStep) {
           return false
         }
       }
@@ -583,6 +593,12 @@ export function History({ token, nodes = [], onRerun }: {
                             {r.Command}
                           </span>
                         </div>
+                        {r.promptIntent && (
+                          <div className="intent-display" title={r.promptIntent}>
+                            <span className="intent-tag mono">intent:</span>
+                            <span className="intent-text">{r.promptIntent}</span>
+                          </div>
+                        )}
                       </td>
 
                       <td className="cell-origin">
@@ -728,6 +744,18 @@ export function History({ token, nodes = [], onRerun }: {
                                   {r.SessionID || r.parsedResp?.session_id || r.parsedReq?.session_id || 'local-exec'}
                                 </span>
                               </div>
+                              {r.stepId && (
+                                <div className="meta-cell">
+                                  <span className="meta-k">STEP ID</span>
+                                  <span className="meta-v mono">{r.stepId}</span>
+                                </div>
+                              )}
+                              {r.promptIntent && (
+                                <div className="meta-cell" style={{ gridColumn: 'span 2' }}>
+                                  <span className="meta-k">PROMPT INTENT / REASONING</span>
+                                  <span className="meta-v" style={{ whiteSpace: 'normal', lineHeight: 1.4 }}>{r.promptIntent}</span>
+                                </div>
+                              )}
                               <div className="meta-cell">
                                 <span className="meta-k">TIMESTAMP</span>
                                 <span className="meta-v mono">{formatFullTime(r.Timestamp)}</span>

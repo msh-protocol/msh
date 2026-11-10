@@ -27,6 +27,8 @@ type PassthroughFlags struct {
 	Answers         []string
 	StrictWorkspace bool
 	NoGuard         bool
+	StepID          string
+	PromptIntent    string
 }
 
 // DefaultPassthroughFlags returns standard production defaults for passthrough runs.
@@ -144,6 +146,21 @@ func ParsePassthroughArgs(args []string) (flags PassthroughFlags, cmdStr string,
 			i++
 		} else if arg == "--no-guard" {
 			flags.NoGuard = true
+			i++
+		} else if arg == "--step-id" && i+1 < len(args) {
+			flags.StepID = args[i+1]
+			i += 2
+		} else if strings.HasPrefix(arg, "--step-id=") {
+			flags.StepID = strings.TrimPrefix(arg, "--step-id=")
+			i++
+		} else if (arg == "--intent" || arg == "--prompt-intent") && i+1 < len(args) {
+			flags.PromptIntent = args[i+1]
+			i += 2
+		} else if strings.HasPrefix(arg, "--intent=") {
+			flags.PromptIntent = strings.TrimPrefix(arg, "--intent=")
+			i++
+		} else if strings.HasPrefix(arg, "--prompt-intent=") {
+			flags.PromptIntent = strings.TrimPrefix(arg, "--prompt-intent=")
 			i++
 		} else {
 			// Unrecognized leading flag: let Cobra handle it (or return error)
@@ -271,9 +288,18 @@ func RunPassthrough(flags PassthroughFlags, command string) {
 		redactSecrets = &f
 	}
 
+	if flags.StepID == "" {
+		flags.StepID = os.Getenv("MSH_STEP_ID")
+	}
+	if flags.PromptIntent == "" {
+		flags.PromptIntent = os.Getenv("MSH_INTENT")
+	}
+
 	req := protocol.ExecRequest{
-		Command:        command,
-		Cwd:            flags.Cwd,
+		Command:         command,
+		Cwd:             flags.Cwd,
+		StepID:          flags.StepID,
+		PromptIntent:    flags.PromptIntent,
 		Timeout:        flags.Timeout,
 		MaxOutputLines: flags.MaxLines,
 		DetectFiles:    !flags.NoFiles,

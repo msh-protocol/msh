@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [1.8.1] - 2026-11-10
+
+### Added
+- **Agent Step & Intent Tracing (`step_id` & `prompt_intent`)** — Added first-class step and reasoning attribution fields across the entire execution protocol (`protocol.ExecRequest`, `protocol.ExecResponse`, `ExecutionRecord`). AI agent harnesses (Claude Code, OpenAI Codex, Cursor, custom agents) can now attach their step/iteration ID and prompt reasoning directly to command execution via `--step-id`, `--intent`, environment variables (`MSH_STEP_ID`, `MSH_INTENT`), or MCP parameters.
+- **Fleet History Intent & Step Attribution** — Upgraded Fleet UI History view to render live agent prompt intent pills directly beneath executed commands and in the expanded inspector docket. Full-text search now matches on step IDs and reasoning phrases, allowing developers to filter history by what the agent was thinking during retry loops.
+- **MCP Tool Parameter Expansion** — Extended `execute_command` MCP tool schema with optional `step_id` and `prompt_intent` parameters, enabling zero-configuration step tracing from MCP-native agents.
+
 ## [1.8.0] - 2026-10-28
 
 ### Added

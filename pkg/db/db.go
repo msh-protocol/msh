@@ -23,15 +23,17 @@ type DB struct {
 
 // ExecutionRecord represents a single flattened row in the history table.
 type ExecutionRecord struct {
-	ID         int    `json:"ID"`
-	Timestamp  string `json:"Timestamp"`
-	SessionID  string `json:"SessionID"`
-	Command    string `json:"Command"`
-	Status     string `json:"Status"`
-	ExitCode   int    `json:"ExitCode"`
-	DurationMs int64  `json:"DurationMs"`
-	ReqJSON    string `json:"ReqJSON"`
-	RespJSON   string `json:"RespJSON"`
+	ID           int    `json:"ID"`
+	Timestamp    string `json:"Timestamp"`
+	SessionID    string `json:"SessionID"`
+	StepID       string `json:"StepID,omitempty"`
+	PromptIntent string `json:"PromptIntent,omitempty"`
+	Command      string `json:"Command"`
+	Status       string `json:"Status"`
+	ExitCode     int    `json:"ExitCode"`
+	DurationMs   int64  `json:"DurationMs"`
+	ReqJSON      string `json:"ReqJSON"`
+	RespJSON     string `json:"RespJSON"`
 }
 
 // InitDB initializes the JSON database at ~/.msh/fleet.json
@@ -93,15 +95,17 @@ func (db *DB) SaveExecution(req protocol.ExecRequest, resp protocol.ExecResponse
 	}
 
 	record := ExecutionRecord{
-		ID:         len(records) + 1,
-		Timestamp:  time.Now().Format(time.RFC3339),
-		SessionID:  req.SessionID,
-		Command:    req.Command,
-		Status:     string(resp.Status),
-		ExitCode:   resp.ExitCode,
-		DurationMs: resp.DurationMs,
-		ReqJSON:    string(reqBytes),
-		RespJSON:   string(respBytes),
+		ID:           len(records) + 1,
+		Timestamp:    time.Now().Format(time.RFC3339),
+		SessionID:    req.SessionID,
+		StepID:       req.StepID,
+		PromptIntent: req.PromptIntent,
+		Command:      req.Command,
+		Status:       string(resp.Status),
+		ExitCode:     resp.ExitCode,
+		DurationMs:   resp.DurationMs,
+		ReqJSON:      string(reqBytes),
+		RespJSON:     string(respBytes),
 	}
 
 	records = append([]ExecutionRecord{record}, records...) // Prepend so newest is first

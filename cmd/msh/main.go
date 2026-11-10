@@ -31,6 +31,8 @@ var (
 	flagAnswers         []string
 	flagStrictWorkspace bool
 	flagNoGuard         bool
+	flagStepID          string
+	flagPromptIntent    string
 )
 
 var rootCmd = &cobra.Command{
@@ -89,6 +91,8 @@ and returned as a structured JSON payload.`,
 	execCmd.Flags().StringSliceVar(&flagAnswers, "answer", nil, "Answer to feed an interactive prompt (repeatable, used in order when prompts are detected)")
 	execCmd.Flags().BoolVar(&flagStrictWorkspace, "strict-workspace", false, "Enforce strict confinement of file writes within workspace")
 	execCmd.Flags().BoolVar(&flagNoGuard, "no-guard", false, "Bypass all safety guardrails and policy enforcement")
+	execCmd.Flags().StringVar(&flagStepID, "step-id", "", "Optional agent step ID for trace tracking")
+	execCmd.Flags().StringVar(&flagPromptIntent, "intent", "", "Optional agent intent/reasoning for running this command")
 
 	// --- version command ---
 	versionCmd := &cobra.Command{
@@ -139,6 +143,8 @@ func runExec(cmd *cobra.Command, args []string) error {
 		PromptAnswers:   flagAnswers,
 		StrictWorkspace: flagStrictWorkspace,
 		NoGuard:         flagNoGuard,
+		StepID:          resolveStepID(flagStepID),
+		PromptIntent:    resolveIntent(flagPromptIntent),
 	}
 
 	// Execute
@@ -177,4 +183,18 @@ func redactFlag() *bool {
 		return &f
 	}
 	return nil
+}
+
+func resolveStepID(val string) string {
+	if val != "" {
+		return val
+	}
+	return os.Getenv("MSH_STEP_ID")
+}
+
+func resolveIntent(val string) string {
+	if val != "" {
+		return val
+	}
+	return os.Getenv("MSH_INTENT")
 }

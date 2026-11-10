@@ -32,6 +32,8 @@ func init() {
 	wrapCmd.Flags().StringSliceVar(&flagAnswers, "answer", nil, "Answer to feed an interactive prompt (repeatable, used in order when prompts are detected)")
 	wrapCmd.Flags().BoolVar(&flagStrictWorkspace, "strict-workspace", false, "Enforce strict confinement of file writes within workspace")
 	wrapCmd.Flags().BoolVar(&flagNoGuard, "no-guard", false, "Bypass all safety guardrails and policy enforcement")
+	wrapCmd.Flags().StringVar(&flagStepID, "step-id", "", "Optional agent step ID for trace tracking")
+	wrapCmd.Flags().StringVar(&flagPromptIntent, "intent", "", "Optional agent intent/reasoning for running this command")
 }
 
 func runWrap(cmd *cobra.Command, args []string) {
@@ -69,6 +71,8 @@ func runWrap(cmd *cobra.Command, args []string) {
 		PromptAnswers:   flagAnswers,
 		StrictWorkspace: flagStrictWorkspace,
 		NoGuard:         flagNoGuard,
+		StepID:          resolveStepID(flagStepID),
+		PromptIntent:    resolveIntent(flagPromptIntent),
 	}
 
 	// Execute

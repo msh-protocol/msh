@@ -182,8 +182,10 @@ func (e *Executor) prepare(req protocol.ExecRequest, startTime time.Time) *prep 
 
 	// Build the initial response object
 	p.resp = protocol.ExecResponse{
-		SessionID: e.session.ID,
-		Cwd:       p.cwd,
+		SessionID:    e.session.ID,
+		StepID:       req.StepID,
+		PromptIntent: req.PromptIntent,
+		Cwd:          p.cwd,
 	}
 
 	// 0. Pre-Execution Semantic Guardrails & Policy Enforcement (msh guard)
@@ -203,6 +205,8 @@ func (e *Executor) prepare(req protocol.ExecRequest, startTime time.Time) *prep 
 	if !guardVerdict.Allowed {
 		p.early = protocol.ExecResponse{
 			SessionID:        e.session.ID,
+			StepID:           p.req.StepID,
+			PromptIntent:     p.req.PromptIntent,
 			Cwd:              p.cwd,
 			Status:           protocol.StatusBlocked,
 			ExitCode:         -1,
@@ -223,8 +227,10 @@ func (e *Executor) prepare(req protocol.ExecRequest, startTime time.Time) *prep 
 		if preErr != nil {
 			p.cfg = cfg
 			p.early = protocol.ExecResponse{
-				SessionID:  e.session.ID,
-				Cwd:        p.cwd,
+				SessionID:    e.session.ID,
+				StepID:       p.req.StepID,
+				PromptIntent: p.req.PromptIntent,
+				Cwd:          p.cwd,
 				Status:     protocol.StatusBlocked,
 				ExitCode:   -1,
 				Error:      preErr.Error(),

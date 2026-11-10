@@ -54,6 +54,12 @@ func (s *MshServer) StartStdio() error {
 		mcp.WithString("session_id",
 			mcp.Description("Session ID to persist CWD and env vars across multiple calls"),
 		),
+		mcp.WithString("step_id",
+			mcp.Description("Optional agent step, iteration, or tool-call ID for trace tracking"),
+		),
+		mcp.WithString("prompt_intent",
+			mcp.Description("Optional intent or reasoning description explaining why the agent is running this command"),
+		),
 		mcp.WithString("prompt_answer",
 			mcp.Description("Answer to feed to an interactive prompt (e.g., 'y'), single use per call"),
 		),
@@ -97,6 +103,12 @@ func (s *MshServer) handleExecuteCommand(ctx context.Context, request mcp.CallTo
 	}
 	if answer, ok := argsMap["prompt_answer"].(string); ok && answer != "" {
 		req.PromptAnswers = []string{answer}
+	}
+	if stepID, ok := argsMap["step_id"].(string); ok && stepID != "" {
+		req.StepID = stepID
+	}
+	if intent, ok := argsMap["prompt_intent"].(string); ok && intent != "" {
+		req.PromptIntent = intent
 	}
 	
 	sessionID, _ := argsMap["session_id"].(string)

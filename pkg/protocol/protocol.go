@@ -36,6 +36,12 @@ type ExecRequest struct {
 	// If empty, the execution runs in a new, ephemeral session.
 	SessionID string `json:"session_id,omitempty"`
 
+	// StepID optionally identifies the logical agent step, iteration, or tool-call ID.
+	StepID string `json:"step_id,omitempty"`
+
+	// PromptIntent optionally captures the agent's intent or reasoning behind running this command.
+	PromptIntent string `json:"prompt_intent,omitempty"`
+
 	// Command is the shell command string to execute.
 	// Example: "npm run build", "ls -la", "go test ./..."
 	Command string `json:"command"`
@@ -110,6 +116,12 @@ type ExecResponse struct {
 	// SessionID is the identifier of the session used for this execution.
 	// Clients should pass this ID in subsequent requests to maintain state.
 	SessionID string `json:"session_id"`
+
+	// StepID is the identifier of the agent step passed in the request.
+	StepID string `json:"step_id,omitempty"`
+
+	// PromptIntent is the agent's intent or reasoning passed in the request.
+	PromptIntent string `json:"prompt_intent,omitempty"`
 
 	// Status indicates the execution outcome.
 	// One of: "success", "error", "timeout", "blocked".
@@ -219,7 +231,7 @@ const DefaultMaxOutputLines = 200
 const DefaultTimeout = 30 * time.Second
 
 // Version is the current version of the msh protocol.
-const Version = "1.8.0"
+const Version = "1.8.1"
 
 // HookResult records the outcome of a pre/post execution hook.
 type HookResult struct {

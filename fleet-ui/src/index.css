@@ -3946,6 +3946,33 @@ html, body {
   font-weight: 500;
 }
 
+.intent-display {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  max-width: 480px;
+}
+
+.intent-tag {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--primary, #5c3a2e);
+  background: rgba(92, 58, 46, 0.08);
+  padding: 1px 4px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.intent-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .badge-local {
   display: inline-flex;
   align-items: center;
