@@ -11,6 +11,8 @@ export interface ExecOptions {
   usePty?: boolean;
   env?: Record<string, string>;
   sessionId?: string;
+  stepId?: string;
+  promptIntent?: string;
 }
 
 export interface HookResult {
@@ -36,6 +38,8 @@ export interface ExecResponse {
   duration_ms: number;
   prompt_detected?: string;
   session_id?: string;
+  step_id?: string;
+  prompt_intent?: string;
   error?: string;
 }
 
@@ -61,6 +65,8 @@ export class MshClient {
     if (options?.timeout) args.push('--timeout', options.timeout);
     if (options?.maxOutputLines !== undefined) args.push('--max-lines', String(options.maxOutputLines));
     if (options?.usePty) args.push('--pty');
+    if (options?.stepId) args.push('--step-id', options.stepId);
+    if (options?.promptIntent) args.push('--intent', options.promptIntent);
     if (options?.promptAnswers) {
       for (const ans of options.promptAnswers) {
         args.push('--answer', ans);
@@ -142,6 +148,8 @@ export class MshClient {
     if (options?.promptAnswers) payload.prompt_answers = options.promptAnswers;
     if (options?.env) payload.env = options.env;
     if (options?.sessionId) payload.session_id = options.sessionId;
+    if (options?.stepId) payload.step_id = options.stepId;
+    if (options?.promptIntent) payload.prompt_intent = options.promptIntent;
 
     try {
       const res = await fetch(url, {

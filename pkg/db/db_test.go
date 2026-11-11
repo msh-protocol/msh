@@ -99,3 +99,28 @@ func TestGetExecutionsClampsBounds(t *testing.T) {
 		t.Fatalf("Count() = %d, want 0", count)
 	}
 }
+
+func TestGetMetrics_RecentHistoryChronological(t *testing.T) {
+	d := newTestDB(t)
+	// Save 50 commands
+	for i := 1; i <= 50; i++ {
+		saveExec(t, d, "sess", "cmd")
+	}
+
+	metrics, err := d.GetMetrics()
+	if err != nil {
+		t.Fatalf("GetMetrics: %v", err)
+	}
+
+	if len(metrics.RecentHistory) != 30 {
+		t.Fatalf("len(RecentHistory) = %d, want 30", len(metrics.RecentHistory))
+	}
+
+	// Should be chronological from 30 runs ago (ID 21) to newest run (ID 50)
+	if metrics.RecentHistory[0].ID != 21 {
+		t.Errorf("RecentHistory[0].ID = %d, want 21 (oldest of recent 30)", metrics.RecentHistory[0].ID)
+	}
+	if metrics.RecentHistory[29].ID != 50 {
+		t.Errorf("RecentHistory[29].ID = %d, want 50 (most recent)", metrics.RecentHistory[29].ID)
+	}
+}

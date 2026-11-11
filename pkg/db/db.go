@@ -329,14 +329,14 @@ func (db *DB) GetMetrics() (MetricsData, error) {
 		return errorBreakdown[i].Count > errorBreakdown[j].Count
 	})
 
-	// Recent history points (up to last 30 in chronological order)
+	// Recent history points: 30 most recent executions in chronological order (left-to-right)
 	historyLimit := 30
-	startIdx := 0
-	if total > historyLimit {
-		startIdx = total - historyLimit
+	count := total
+	if count > historyLimit {
+		count = historyLimit
 	}
-	recentHistory := make([]HistoryPoint, 0, total-startIdx)
-	for i := startIdx; i < total; i++ {
+	recentHistory := make([]HistoryPoint, 0, count)
+	for i := count - 1; i >= 0; i-- {
 		rec := records[i]
 		isSuccess := rec.Status == "success" || (rec.ExitCode == 0 && rec.Status != "error" && rec.Status != "timeout" && rec.Status != "blocked")
 		recentHistory = append(recentHistory, HistoryPoint{
